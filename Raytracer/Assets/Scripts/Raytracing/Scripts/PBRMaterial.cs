@@ -39,7 +39,7 @@ namespace M726Raytracing {
 
         [Header("Refractive Index")]
         [SerializeField]
-        [Range(0.1f, 10f)]
+        [Range(1f, 10f)]
         private float refractionIndex = 1.1f;
         [SerializeField]
         [Range(0f, 10f)]

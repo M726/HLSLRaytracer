@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -10,11 +11,13 @@ namespace M726Raytracing {
         public ObjectType type;
         private Vector3 position;
         private Vector3 localScale;
-        private Vector3 rotation;
+        private Vector4 rotation;
 
         public PBRMaterial material;
 
+        private string id;
         private ObjectType lastObjectType;
+
 
         public RTObject(ObjectType objectType) {
             type = objectType;
@@ -45,7 +48,9 @@ namespace M726Raytracing {
 
             position = transform.position;
             localScale = transform.localScale;
-            rotation = transform.rotation.eulerAngles;
+            
+            rotation = transform.rotation.eulerAngles * Mathf.Deg2Rad;
+
         }
 
         public ShaderObject GetShaderObject() {
@@ -72,6 +77,25 @@ namespace M726Raytracing {
                     break;
                 }
             }
+        }
+
+        public void SetID(string id) {
+            this.id = id;
+        }
+
+        public string GetID() {
+            if(!string.IsNullOrEmpty(id)) 
+                return id;
+
+            string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            char[] stringChars = new char[32];
+            System.Random random = new System.Random();
+
+            for (int i = 0; i < stringChars.Length; i++) {
+                stringChars[i] = chars[random.Next(chars.Length)];
+            }
+
+            return new String(stringChars);
         }
     }
 }

@@ -23,7 +23,6 @@ namespace M726Raytracing {
 
 
         [Header("Debug")]
-        public Vector3 lightPosition = Vector3.zero;
 
         public bool debugSampleReset = true;
         public int sampleResetNumber = 20000;
@@ -35,9 +34,12 @@ namespace M726Raytracing {
         private Material _addMaterial;
         private Vector2 _pixelOffset = new Vector2(0.5f, 0.5f);
 
-        ComputeBuffer uvBuffer;
+        private List<ComputeBuffer> computeBuffers = new List<ComputeBuffer>();
         private readonly System.Random rand = new System.Random();
 
+        private void Start() {
+            sceneManager = new RTSceneManager();
+        }
         private void Awake() {
             _camera = GetComponent<Camera>();
         }
@@ -50,14 +52,26 @@ namespace M726Raytracing {
         }
 
         private void OnRenderImage(RenderTexture source, RenderTexture destination) {
+            SetShaderScene();
             SetShaderParameters();
             CreateSourceTexture();
             Render(destination);
             ReleaseBuffers();
         }
+
+        private void SetShaderScene() {
+            ShaderObject[] shaderObjects = sceneManager.GetShaderObjects();
+            ComputeBuffer objectBuffer = new ComputeBuffer(shaderObjects.Length, sizeof(float) * 23 + sizeof(int));
+            objectBuffer.SetData(shaderObjects);
+            raytracingShader.SetBuffer(0, "_Objects", objectBuffer);
+            computeBuffers.Add(objectBuffer);
+        }
+
         private void SetShaderParameters() {
-            uvBuffer = new ComputeBuffer(2, sizeof(double) * 2);
+            ComputeBuffer uvBuffer = new ComputeBuffer(2, sizeof(double) * 2);
             uvBuffer.SetData(new[] { rand.NextDouble(), rand.NextDouble() });
+            computeBuffers.Add(uvBuffer);
+
             raytracingShader.SetBuffer(0, "_PixelOffset", uvBuffer);
 
             raytracingShader.SetMatrix("_CameraToWorld", _camera.cameraToWorldMatrix);
@@ -67,7 +81,10 @@ namespace M726Raytracing {
         }
 
         private void ReleaseBuffers() {
-            uvBuffer.Release();
+            foreach(ComputeBuffer computeBuffer in computeBuffers) {
+                computeBuffer.Release();
+            }
+            computeBuffers.Clear();
         }
         private void CreateSourceTexture() {
             if (sourceTexture == null || sourceTexture.width != Screen.width || sourceTexture.height != Screen.height) {

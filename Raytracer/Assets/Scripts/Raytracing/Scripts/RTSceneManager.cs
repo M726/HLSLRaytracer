@@ -1,15 +1,16 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using M726Raytracing;
 using System;
 
 namespace M726Raytracing {
-    public class RTSceneManager : MonoBehaviour {
+    public class RTSceneManager {
         private RTObject[] raytracingObjects;
+        int objectIdCounter = 0;
         // Start is called before the first frame update
-        void Start() {
-            raytracingObjects = FindObjectsOfType(typeof(RTObject)) as RTObject[];
+        public RTSceneManager() {
+            raytracingObjects = UnityEngine.Object.FindObjectsOfType(typeof(RTObject)) as RTObject[];
+            foreach (RTObject obj in raytracingObjects) {
+                obj.SetID(objectIdCounter.ToString());
+                objectIdCounter++;
+            }
         }
 
         public ShaderObject[] GetShaderObjects() {
@@ -20,8 +21,8 @@ namespace M726Raytracing {
             return objects;
         }
 
-        public RTObject CreateObject() {
-            RTObject obj = new RTObject(ObjectType.Sphere);
+        public RTObject CreateObject(ObjectType type) {
+            RTObject obj = new RTObject(type);
             Array.Resize(ref raytracingObjects, raytracingObjects.Length + 1);
             raytracingObjects[raytracingObjects.Length - 1] = obj;
             return obj;

@@ -21,15 +21,88 @@ static const float3 f3zero = float3(0.0, 0.0, 0.0);
 //Camera Setup
 float2 _ClippingPlanes;
 
-struct PBRMaterial
+
+float3x3 GetRotationMatrix(float3 angles)
+{
+    float yaw = angles.z;
+    float pitch = angles.y;
+    float roll = angles.x;
+    
+    float sa = sin(yaw);
+    float sb = sin(pitch);
+    float sc = sin(roll);
+    
+    float ca = cos(yaw);
+    float cb = cos(pitch);
+    float cc = cos(roll);
+    
+    return float3x3(
+        ca * cb, ca * sb * sc - sa * cc, ca * sb * cc + sa * sc,
+        sa * cb, sa * sb * sc + ca * cc, sa * sb * cc - ca * sc,
+        -sb, cb * sc, cb * cc);
+
+}
+
+float3x3 GetRotationMatrix(float4 quaternion)
+{
+    float4 q = float4(-quaternion.x, quaternion.y, quaternion.z, quaternion.w) / length(quaternion);
+    
+    float m11 = 1 - 2 * (q.y * q.y + q.z * q.z);
+    float m12 = 2 * (q.x * q.y - q.z * q.w);
+    float m13 = 2 * (q.x * q.z + q.y * q.w);
+    
+    float m21 = 2 * (q.x * q.y + q.z * q.w);
+    float m22 = 1 - 2 * (q.x * q.x + q.z * q.z);
+    float m23 = 2 * (q.y * q.z - q.x * q.w);
+    
+    float m31 = 2 * (q.x * q.z - q.y * q.w);
+    float m32 = 2 * (q.y * q.z - q.x * q.w);
+    float m33 = 1 - 2 * (q.x * q.x + q.y * q.y);
+    
+    return float3x3(m11, m12, m13, m21, m22, m23, m31, m32, m33);
+    //return float3x3(m11, m13, m12, m21, m23, m22, m31, m33, m32);
+}
+float3x3 GetInverseMatrix(float3x3 r)
+{
+    //I'm almost certain this works based on AA^-1=I tests
+    //From linear algebra book 181
+        //A^-1 = 1/(det(A)) * adj(A)
+        //adj(A) = transpose of the matrix of cofactors
+    float m11 = r._22 * r._33 - r._23 * r._32;
+    float m12 = -r._12 * r._33 + r._13 * r._32;
+    float m13 = r._12 * r._23 - r._13 * r._22;
+    
+    float m21 = -r._21 * r._33 + r._23 * r._31;
+    float m22 = r._11 * r._33 - r._13 * r._31;
+    float m23 = -r._11 * r._23 + r._13 * r._21;
+    
+    float m31 = r._21 * r._33 - r._22 * r._31;
+    float m32 = -r._11 * r._32 + r._12 * r._31;
+    float m33 = r._11 * r._22 - r._12 * r._21;
+    
+    return (1 / determinant(r)) * float3x3(m11, m12, m13, m21, m22, m23, m31, m32, m33);
+
+}
+
+struct MaterialProperties
 {
     float3 diffuseColor;
     float3 specularColor;
+    float3 emissiveColor;
     float diffuse;
     float specular;
-    float emissivity;
-    float refractionIndex;
-    float transmissionFraction;
+    float emissive;
+    float refraction;
+    float extinction;
+};
+
+struct ShaderObject
+{
+    int type;
+    float3 position;
+    float3 scale;
+    float3 rotation;
+    MaterialProperties material;
 };
 struct Ray
 {
@@ -41,21 +114,8 @@ struct RayHit
     float3 position;
     float3 normal;
     float distance;
-    PBRMaterial mat;
+    MaterialProperties mat;
 };
-struct ObjectPlane
-{
-    float3 normal;
-    float3 position;
-    PBRMaterial mat;
-};
-
-struct ObjectSphere {
-    float3 position;
-    float radius;
-    PBRMaterial mat;
-};
-
 struct LightDirectional
 {
     float3 position;
@@ -72,30 +132,21 @@ struct LightPoint
 };
 
 
-StructuredBuffer<ObjectSphere> _ObjectSpheres;
-StructuredBuffer<ObjectPlane> _ObjectPlanes;
-StructuredBuffer<LightDirectional> _LightDirectional;
-StructuredBuffer<LightPoint> _LightPoint;
+StructuredBuffer<ShaderObject> _Objects;
 StructuredBuffer<double> _PixelOffset;
 
-
-PBRMaterial CreateMaterial(float3 color, float refractionIndex)
+MaterialProperties CreateMaterial()
 {
-    PBRMaterial mat;
-    mat.diffuseColor = color;
-    mat.emissivity = 0.0;
-    mat.refractionIndex = refractionIndex;
+    MaterialProperties mat;
+    mat.diffuseColor = f3one;
+    mat.diffuse = 1;
+    mat.emissive = 0;
+    mat.emissiveColor = float3(1, 1, 1);
+    mat.specular = 1;
+    mat.specularColor = float3(1, 1, 1);
+    mat.refraction = 1;
+    mat.extinction = 3;
     return mat;
-}
-
-PBRMaterial CreateMaterial(float3 color)
-{
-    return CreateMaterial(color, 1.0);
-}
-
-PBRMaterial CreateMaterial()
-{
-    return CreateMaterial(float3(1.0, 1.0, 1.0));
 }
 
 RayHit CreateRayHit()
@@ -124,24 +175,39 @@ bool randBool(float co, float cutoff)
     return false;
 }
 
-void IntersectionTestObjectPlane(ObjectPlane plane, Ray ray, inout RayHit bestHit)
+void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
 {
-    float t = dot((plane.position - ray.origin), plane.normal) / dot(ray.direction, plane.normal);
-    bool direction = (dot(plane.normal, ray.direction) > 0);
-    if (!direction && t < bestHit.distance && t > 0)
-    {
-        bestHit.distance = t;
-        bestHit.normal = plane.normal;
-        bestHit.position = ray.origin + ray.direction * t;
-        bestHit.mat = plane.mat;
+    //float3 normal = float3(0, 1, 0);
+    float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
+    float3 normal = mul(rotationMatrix, float3(0, 1, 0)); //TODO: precompute this - it should take far fewer calculations
+    
+    float normalDotDirection = dot(normal, ray.direction);
+    if (normalDotDirection < 0)
+    { 
+        float t = dot((object.position - ray.origin), normal) / normalDotDirection;
+        float3 hitPoint = ray.origin + ray.direction * t;
+        if (t > 0 && t < bestHit.distance)
+        {
+            //float3 localposition = mul(mul(GetInverseMatrix(GetRotationMatrix(object.rotation)), GetRotationMatrix(object.rotation)), float3(0.7, 1, 0));
+            float3 localposition = mul(transpose(rotationMatrix), float3(hitPoint));
+            if (localposition.z > -10* object.scale.z / 2 && localposition.z < 10* object.scale.z / 2
+                && localposition.x > -10 * object.scale.x / 2 && localposition.x < 10 * object.scale.x / 2)
+            {
+                bestHit.position = hitPoint;
+                bestHit.normal = normalize(normal);
+                bestHit.distance = t;
+                bestHit.mat = object.material;
+                bestHit.mat.diffuseColor = normal;
+            }
+        }
     }
-
 }
-void IntersectionTestObjectSphere(ObjectSphere sphere, Ray ray, inout RayHit bestHit)
+
+void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
 {
-    float3 dPosition = ray.origin - sphere.position;
+    float3 dPosition = ray.origin - object.position;
     float uDotDPosition = -dot(ray.direction, dPosition);
-    float del = pow(uDotDPosition, 2) - (dot(dPosition, dPosition) - pow(sphere.radius, 2));
+    float del = pow(uDotDPosition, 2) - (dot(dPosition, dPosition) - pow(length(object.scale), 2));
 
     if (del < 0)
         return; //No Intersection
@@ -150,12 +216,12 @@ void IntersectionTestObjectSphere(ObjectSphere sphere, Ray ray, inout RayHit bes
     float distanceFromLineOrigin = uDotDPosition - sqrtDel > 0 ? uDotDPosition - sqrtDel : uDotDPosition + sqrtDel;
     float3 position = ray.origin + distanceFromLineOrigin * ray.direction;
     
-    if (!(dot((position - sphere.position), ray.direction) > 0)  && distanceFromLineOrigin - _ClippingPlanes.x > 0 && distanceFromLineOrigin - _ClippingPlanes.y < 0 && distanceFromLineOrigin < bestHit.distance)
+    if (!(dot((position - object.position), ray.direction) > 0)  && distanceFromLineOrigin - _ClippingPlanes.x > 0 && distanceFromLineOrigin - _ClippingPlanes.y < 0 && distanceFromLineOrigin < bestHit.distance)
     {
         bestHit.position = position;
-        bestHit.normal = normalize(position - sphere.position);
+        bestHit.normal = normalize(position - object.position);
         bestHit.distance = distanceFromLineOrigin;
-        bestHit.mat = sphere.mat;
+        bestHit.mat = object.material;
     }
 }
 RayHit Trace(Ray ray)
@@ -164,103 +230,45 @@ RayHit Trace(Ray ray)
     ray.direction = normalize(ray.direction);
     RayHit bestHit = CreateRayHit();
     
-    /*
-    //Load objects
-    uint numObjectSpheres, stride;
-    _ObjectSpheres.GetDimensions(numObjectSpheres, stride);
-    
-    //Test Objects
-    for (uint i = 0; i < numObjectSpheres; i++)
-        IntersectionTestObjectSphere(_ObjectSpheres[i], ray, bestHit);
-    
-    */
-    /*
-    for(objects in scene){
-        //Test bestHit 
+    uint numObjects, stride;
+    _Objects.GetDimensions(numObjects, stride);
+    for (uint i = 0; i < numObjects; i++)
+    {
+        switch (_Objects[i].type)
+        {
+            case 0:
+                IntersectionTestSphere(_Objects[i], ray, bestHit);
+                break;
+            case 1:
+                IntersectionTestPlane(_Objects[i], ray, bestHit);
+                break;
+        }
+
     }
-    */
-    ObjectSphere sphere;
-    sphere.radius = 3;
-    sphere.position = float3(-0.5, sphere.radius, -2);
-    sphere.mat = CreateMaterial(float3(0, 0, 1), 1.1);
-    IntersectionTestObjectSphere(sphere, ray, bestHit);
-    
-    sphere.radius = 2;
-    sphere.position = float3(4.0, sphere.radius, 0.0);
-    sphere.mat = CreateMaterial(float3(1, 0, 0), 1.3);
-    IntersectionTestObjectSphere(sphere, ray, bestHit);
-    
-    
-    sphere.radius = 1.5;
-    sphere.position = float3(3, sphere.radius, 4);
-    sphere.mat = CreateMaterial(float3(0.5,1, 0.5), 377);
-    IntersectionTestObjectSphere(sphere, ray, bestHit);
-    
-    sphere.radius = 1;
-    sphere.position = float3(-3.0, sphere.radius, 0.0);
-    sphere.mat = CreateMaterial(float3(0.8, 0.8, 0.8), 1.1);
-    IntersectionTestObjectSphere(sphere, ray, bestHit);
-    
-    //Test ObjectPlane
-    ObjectPlane groundObjectPlane;
-    groundObjectPlane.normal = float3(0, 1, 0);
-    groundObjectPlane.position = f3zero;
-    groundObjectPlane.mat = CreateMaterial(float3(0.2, 0.2, 0.2));
-    IntersectionTestObjectPlane(groundObjectPlane, ray, bestHit);
-    
-    groundObjectPlane.normal = float3(0, -1, 0);
-    groundObjectPlane.position = float3(0, 10, 0);
-    groundObjectPlane.mat = CreateMaterial(float3(0.7, 0.7, 0.7));
-    IntersectionTestObjectPlane(groundObjectPlane, ray, bestHit);
-    
-    groundObjectPlane.normal = float3(1, 0, 0);
-    groundObjectPlane.position = float3(-7, 0, 0);
-    groundObjectPlane.mat = CreateMaterial(float3(0.2, 1, 0.2));
-    IntersectionTestObjectPlane(groundObjectPlane, ray, bestHit);
-    
-    groundObjectPlane.normal = float3(-1, 0, 0);
-    groundObjectPlane.position = float3(7, 0, 0);
-    groundObjectPlane.mat = CreateMaterial(float3(1, 0.2, 0.2));
-    IntersectionTestObjectPlane(groundObjectPlane, ray, bestHit);
-    
-    groundObjectPlane.normal = float3(0, 0, 1);
-    groundObjectPlane.position = float3(0, 0, -5);
-    groundObjectPlane.mat = CreateMaterial(float3(1, 1, 1));
-    IntersectionTestObjectPlane(groundObjectPlane, ray, bestHit);
     
     return bestHit;
 }
 float3 ShadowRay(RayHit hit)
 {
-    float3 intensity = f3zero;
-    uint numLights, stride;
-    
-    _LightPoint.GetDimensions(numLights, stride);
-    
-    for (uint light = 0; light < numLights; light++)
-    {
-        float distance = length(_LightPoint[light].position - hit.position);
+    float3 color = float3(1, 1, 1);
+    float3 position = float3(-1, 6, 11);
+        float distance = length(position - hit.position);
         Ray ray;
-        ray.direction = normalize(_LightPoint[light].position - hit.position);
+        ray.direction = normalize(position - hit.position);
         ray.origin = hit.position - hit.normal * 0.001;
         if (Trace(ray).distance > distance) //collision before light
         {
             //intensity += dot(hit.normal, ray.direction) * _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
-            intensity += _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
+            return color * 800 / (distance * distance * 4.0 * PI);
         }
-    }
-    return intensity;
+    return f3zero;
 }
 
 float3 Shade(RayHit hit, float3 colorMultiplier)
 {
     //return ShadowRay(hit);
-    return colorMultiplier * (ShadowRay(hit) + hit.mat.emissivity); //(ShadowRay(hit) + hit.mat.emissivity ) * (hit.mat.diffuseColor);
-}
-
-float Refract(float n1, float n2, float k1, float k2)
-{
-    return 0;
+    //return colorMultiplier; //(ShadowRay(hit) + hit.mat.emissivity ) * (hit.mat.diffuseColor);
+    return colorMultiplier;// * (ShadowRay(hit));
 }
 float3 RayTrace(Ray ray)
 {
@@ -273,12 +281,12 @@ float3 RayTrace(Ray ray)
     float3 result = Shade(hit, colorMultiplier);
     colorMultiplier = hit.mat.diffuseColor;
     
-    for (uint i = 0; i < 50; i++)
+    for (uint i = 0; i < 1; i++)
     {
         if (hit.distance < 1.#INF)
         {
             float n1 = 1.0;
-            float n2 = hit.mat.refractionIndex;
+            float n2 = hit.mat.refraction;
             float theta1 = acos(dot(normalize(hit.normal), normalize(-ray.direction)));
             float theta2 = asin((n1 / n2 * sin(theta1)));
             float rs = pow(abs((n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2))), 2);
@@ -296,14 +304,14 @@ float3 RayTrace(Ray ray)
                 ray.direction = mirrorScatteringDirection;
                 hit = Trace(ray);
                 hit.mat.diffuseColor = f3one;
-                result += Shade(hit, colorMultiplier);
+                result += Shade(hit, colorMultiplier) * hit.mat.specular;
             }else{
                 //Diffuse Reflection
                 float3 lambertianScatteringDirection = rand3(ray.direction);
                 lambertianScatteringDirection = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
                 ray.direction = lambertianScatteringDirection;
                 hit = Trace(ray);
-                result += Shade(hit, colorMultiplier);
+                result += Shade(hit, colorMultiplier) * hit.mat.diffuse;
                 colorMultiplier *= hit.mat.diffuseColor;
             }
             
@@ -355,6 +363,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     float3 result = RayTrace(ray);
     
     Result[id.xy] = float4(result, 1.0);
+    //Result[id.xy] = float4(0.5, 0.5, 0.5, 1.0); //Test output color
     
     //Result[id.xy] = float4(id.x & id.y, (id.x & 15) / 15.0, (id.y & 15) / 15.0, 0.0);
 }
