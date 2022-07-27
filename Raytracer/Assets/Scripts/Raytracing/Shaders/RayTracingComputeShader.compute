@@ -24,22 +24,31 @@ float2 _ClippingPlanes;
 
 float3x3 GetRotationMatrix(float3 angles)
 {
-    float yaw = angles.z;
-    float pitch = angles.y;
-    float roll = angles.x;
     
-    float sa = sin(yaw);
-    float sb = sin(pitch);
+    float pitch = fmod(angles.z, 2 * PI);
+    float yaw = fmod(angles.y, 2 * PI);
+    float roll = fmod(angles.x, 2 * PI);
+    
+    float sa = sin(pitch);
+    float sb = sin(yaw);
     float sc = sin(roll);
     
-    float ca = cos(yaw);
-    float cb = cos(pitch);
+    float ca = cos(pitch);
+    float cb = cos(yaw);
     float cc = cos(roll);
     
-    return float3x3(
-        ca * cb, ca * sb * sc - sa * cc, ca * sb * cc + sa * sc,
-        sa * cb, sa * sb * sc + ca * cc, sa * sb * cc - ca * sc,
-        -sb, cb * sc, cb * cc);
+    float3x3 mpitch = float3x3(ca, -sa, 0, sa, ca, 0, 0, 0, 1);
+    float3x3 myaw = float3x3(cb, 0, sb, 0, 1, 0, -sb, 0, cb);
+    float3x3 mroll = float3x3(1, 0, 0, 0, cc, -sc, 0, sc, cc);
+    
+    //yaw->roll
+    //yaw->pitch
+    return mul(myaw, mul(mroll, mpitch));
+    
+    //return float3x3(
+    //    ca * cb, ca * sb * sc - sa * cc, ca * sb * cc + sa * sc,
+    //    sa * cb, sa * sb * sc + ca * cc, sa * sb * cc - ca * sc,
+    //    -sb, cb * sc, cb * cc);
 
 }
 
@@ -98,6 +107,7 @@ struct MaterialProperties
 
 struct ShaderObject
 {
+    int id;
     int type;
     float3 position;
     float3 scale;
@@ -106,6 +116,7 @@ struct ShaderObject
 };
 struct Ray
 {
+    int hitObject;
     float3 origin;
     float3 direction;
 };
@@ -188,16 +199,13 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
         float3 hitPoint = ray.origin + ray.direction * t;
         if (t > 0 && t < bestHit.distance)
         {
-            //float3 localposition = mul(mul(GetInverseMatrix(GetRotationMatrix(object.rotation)), GetRotationMatrix(object.rotation)), float3(0.7, 1, 0));
-            float3 localposition = mul(transpose(rotationMatrix), float3(hitPoint));
-            if (localposition.z > -10* object.scale.z / 2 && localposition.z < 10* object.scale.z / 2
-                && localposition.x > -10 * object.scale.x / 2 && localposition.x < 10 * object.scale.x / 2)
+            float3 localposition = mul(transpose(rotationMatrix), float3(hitPoint-object.position));
+            if (abs(localposition.z) < object.scale.z / 2 && abs(localposition.x) < object.scale.x / 2)
             {
                 bestHit.position = hitPoint;
                 bestHit.normal = normalize(normal);
                 bestHit.distance = t;
                 bestHit.mat = object.material;
-                bestHit.mat.diffuseColor = normal;
             }
         }
     }
@@ -216,7 +224,8 @@ void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
     float distanceFromLineOrigin = uDotDPosition - sqrtDel > 0 ? uDotDPosition - sqrtDel : uDotDPosition + sqrtDel;
     float3 position = ray.origin + distanceFromLineOrigin * ray.direction;
     
-    if (!(dot((position - object.position), ray.direction) > 0)  && distanceFromLineOrigin - _ClippingPlanes.x > 0 && distanceFromLineOrigin - _ClippingPlanes.y < 0 && distanceFromLineOrigin < bestHit.distance)
+    if (!(dot((position - object.position), ray.direction) > 0)
+        && distanceFromLineOrigin < bestHit.distance)
     {
         bestHit.position = position;
         bestHit.normal = normalize(position - object.position);
@@ -251,15 +260,15 @@ RayHit Trace(Ray ray)
 float3 ShadowRay(RayHit hit)
 {
     float3 color = float3(1, 1, 1);
-    float3 position = float3(-1, 6, 11);
+    float3 position = float3(-1, 1.5, 1.5);
         float distance = length(position - hit.position);
         Ray ray;
         ray.direction = normalize(position - hit.position);
-        ray.origin = hit.position - hit.normal * 0.001;
+        ray.origin = hit.position;
         if (Trace(ray).distance > distance) //collision before light
         {
             //intensity += dot(hit.normal, ray.direction) * _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
-            return color * 800 / (distance * distance * 4.0 * PI);
+            return color * 10 / (distance * distance * 4.0 * PI);
         }
     return f3zero;
 }
@@ -268,7 +277,7 @@ float3 Shade(RayHit hit, float3 colorMultiplier)
 {
     //return ShadowRay(hit);
     //return colorMultiplier; //(ShadowRay(hit) + hit.mat.emissivity ) * (hit.mat.diffuseColor);
-    return colorMultiplier;// * (ShadowRay(hit));
+    return colorMultiplier * (ShadowRay(hit));
 }
 float3 RayTrace(Ray ray)
 {
@@ -281,7 +290,7 @@ float3 RayTrace(Ray ray)
     float3 result = Shade(hit, colorMultiplier);
     colorMultiplier = hit.mat.diffuseColor;
     
-    for (uint i = 0; i < 1; i++)
+    for (uint i = 0; i < 100; i++)
     {
         if (hit.distance < 1.#INF)
         {

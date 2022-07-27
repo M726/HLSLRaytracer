@@ -3,12 +3,17 @@ using System;
 namespace M726Raytracing {
     public class RTSceneManager {
         private RTObject[] raytracingObjects;
-        int objectIdCounter = 0;
+        int objectIdCounter = 1;
         // Start is called before the first frame update
         public RTSceneManager() {
+            UpdateSceneObjects();
+        }
+
+        public void UpdateSceneObjects() {
+            objectIdCounter = 1;
             raytracingObjects = UnityEngine.Object.FindObjectsOfType(typeof(RTObject)) as RTObject[];
             foreach (RTObject obj in raytracingObjects) {
-                obj.SetID(objectIdCounter.ToString());
+                obj.SetID(objectIdCounter);
                 objectIdCounter++;
             }
         }

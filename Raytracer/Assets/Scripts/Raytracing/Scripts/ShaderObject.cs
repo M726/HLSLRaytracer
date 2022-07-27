@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace M726Raytracing{
     public struct ShaderObject {
+        public int id;
         public int type;
         public Vector3 position, scale;
         public Vector3 rotation;

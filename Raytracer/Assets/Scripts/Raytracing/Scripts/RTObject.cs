@@ -8,6 +8,7 @@ namespace M726Raytracing {
     [ExecuteInEditMode]
     public class RTObject : MonoBehaviour {
 
+        private int id;
         public ObjectType type;
         private Vector3 position;
         private Vector3 localScale;
@@ -15,7 +16,6 @@ namespace M726Raytracing {
 
         public PBRMaterial material;
 
-        private string id;
         private ObjectType lastObjectType;
 
 
@@ -48,13 +48,14 @@ namespace M726Raytracing {
 
             position = transform.position;
             localScale = transform.localScale;
-            
+
             rotation = transform.rotation.eulerAngles * Mathf.Deg2Rad;
 
         }
 
         public ShaderObject GetShaderObject() {
             return new ShaderObject {
+                id = id,
                 type = (int)type,
                 position = position,
                 scale = localScale,
@@ -64,38 +65,28 @@ namespace M726Raytracing {
         }
 
         private void OnDrawGizmos() {
+            Gizmos.matrix = Matrix4x4.TRS(transform.position, transform.rotation, transform.lossyScale);
             switch (type) {
                 case ObjectType.Sphere: {
-                    Gizmos.DrawSphere(position, localScale.magnitude);
+                    Gizmos.DrawWireSphere(Vector3.zero, 1f);
                     break;
                 }
                 case ObjectType.Plane: {
+                    Gizmos.DrawLine(new Vector3(-0.5f, 0, -0.5f), new Vector3(0.5f, 0, -0.5f));
+                    Gizmos.DrawLine(new Vector3(-0.5f, 0, -0.5f), new Vector3(-0.5f, 0, 0.5f));
+                    Gizmos.DrawLine(new Vector3(0.5f, 0, 0.5f), new Vector3(-0.5f, 0, 0.5f));
+                    Gizmos.DrawLine(new Vector3(0.5f, 0, 0.5f), new Vector3(0.5f, 0, -0.5f));
                     break;
                 }
                 case ObjectType.Cube: {
-                    Gizmos.DrawCube(position, localScale);
+                    Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
                     break;
                 }
             }
         }
 
-        public void SetID(string id) {
+        public void SetID(int id) {
             this.id = id;
-        }
-
-        public string GetID() {
-            if(!string.IsNullOrEmpty(id)) 
-                return id;
-
-            string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            char[] stringChars = new char[32];
-            System.Random random = new System.Random();
-
-            for (int i = 0; i < stringChars.Length; i++) {
-                stringChars[i] = chars[random.Next(chars.Length)];
-            }
-
-            return new String(stringChars);
         }
     }
 }
