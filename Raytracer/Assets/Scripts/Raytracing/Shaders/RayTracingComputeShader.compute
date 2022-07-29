@@ -119,6 +119,7 @@ struct ShaderObject
 };
 struct Ray
 {
+    float n;
     float3 origin;
     float3 direction;
 };
@@ -261,14 +262,21 @@ RayHit Trace(Ray ray)
     _Objects.GetDimensions(numObjects, stride);
     for (uint i = 0; i < numObjects; i++)
     {
-        switch (_Objects[i].type)
+        if (ray.n == 1 || ray.n == _Objects[i].material.refraction)
         {
-            case 0:
-                IntersectionTestSphere(_Objects[i], ray, bestHit);
-                break;
-            case 1:
-                IntersectionTestPlane(_Objects[i], ray, bestHit);
-                break;
+            switch (_Objects[i].type)
+            {
+                case 0:
+                    IntersectionTestSphere(_Objects[i], ray, bestHit);
+                    break;
+                case 1:
+                    IntersectionTestPlane(_Objects[i], ray, bestHit);
+                    break;
+                case 2:
+                //IntersectionTestCube(_Objects[i], ray, bestHit);
+                    break;
+
+            }
         }
     }
     return bestHit;
@@ -281,6 +289,7 @@ float3 ShadowRay(RayHit hit)
     float lightDistance = length(position - hit.position);
     
     Ray ray;
+    ray.n = 1;
     ray.direction = normalize(position - hit.position);
     ray.origin = hit.position + hit.normal * 0.00001f;
     RayHit lightHit = Trace(ray);
@@ -296,6 +305,15 @@ float3 ShadowRay(RayHit hit)
     return f3zero;
 }
 
+float3 RefractRay(float n1, float n2, float3 direction, float3 normal)
+{
+    direction = normalize(direction);
+    normal = normalize(-normal);
+    float dirDotNormal = dot(direction, normal);
+    return (direction - normal * dirDotNormal + normal * sqrt(n2 * n2 - n1 * n1 + dirDotNormal * dirDotNormal));
+
+}
+
 float3 RayTrace(Ray ray)
 {
     RayHit hit = CreateRayHit();
@@ -309,9 +327,10 @@ float3 RayTrace(Ray ray)
         result += (ShadowRay(hit) + hit.mat.emissiveColor * hit.mat.emissive) * colorMultiplier;
         if (hit.distance < 1.#INF && length(colorMultiplier) > 0.01f)
         {
-            float n1 = 1.0;
+            float n1 = ray.n;
             float n2 = hit.mat.refraction;
             float theta1 = acos(dot(normalize(hit.normal), normalize(-ray.direction)));
+            
             float theta2 = asin((n1 / n2 * sin(theta1)));
             float rs = pow((n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2)), 2);
             float rp = pow((n1 * cos(theta2) - n2 * cos(theta1)) / (n1 * cos(theta2) + n2 * cos(theta1)), 2);
@@ -326,7 +345,9 @@ float3 RayTrace(Ray ray)
                 colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
                 float3 mirrorScatteringDirection = reflect(ray.direction, hit.normal);
                 ray.direction = mirrorScatteringDirection;
-            }else{ 
+            }
+            else
+            {
                 //Refraction
                 if (hit.mat.opacity == 0)
                 {
@@ -336,7 +357,24 @@ float3 RayTrace(Ray ray)
                 }
                 else
                 {
-                    ray.origin = hit.position - hit.normal * 0.00003f;
+                    ray.origin = hit.position - hit.normal * 0.00003f; //Cross boundary
+                    if (ray.n != hit.mat.refraction) //Refract
+                    {
+                        //Entering Object
+                        ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
+                        colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
+                        ray.n = hit.mat.refraction;
+                        //ray.direction = refract(ray.direction, hit.normal, hit.mat.refraction);
+                        //return f3one * theta2 / (PI);
+
+                    }
+                    else
+                    {
+                        ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
+                        ray.n = 1;
+
+                        colorMultiplier *= hit.mat.transmissiveColor * (hit.mat.opacity / (hit.distance + hit.mat.opacity * (1 - hit.distance))); //Fix this
+                    }
                 }
             }
         }
@@ -349,6 +387,7 @@ float3 RayTrace(Ray ray)
 Ray CreateRay(float3 origin, float3 direction)
 {
     Ray ray;
+    ray.n = 1;
     ray.origin = origin;
     ray.direction = normalize(direction);
     return ray;

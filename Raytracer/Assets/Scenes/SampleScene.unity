@@ -281,7 +281,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   type: 1
-  material: {fileID: 11400000, guid: 976277892981f6043b2ffcc9719bb6d6, type: 2}
+  material: {fileID: 11400000, guid: abb1b8c38bf81c449b48c809edbe2021, type: 2}
 --- !u!4 &526195971
 Transform:
   m_ObjectHideFlags: 0
@@ -373,11 +373,11 @@ Transform:
   m_Children:
   - {fileID: 358786147}
   - {fileID: 461328566}
+  - {fileID: 1510911392}
   - {fileID: 526195971}
   - {fileID: 814752978}
   - {fileID: 760439531}
   - {fileID: 972187258}
-  - {fileID: 1510911392}
   m_Father: {fileID: 0}
   m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -549,7 +549,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   type: 1
-  material: {fileID: 11400000, guid: 976277892981f6043b2ffcc9719bb6d6, type: 2}
+  material: {fileID: 11400000, guid: abb1b8c38bf81c449b48c809edbe2021, type: 2}
 --- !u!4 &760439531
 Transform:
   m_ObjectHideFlags: 0
@@ -641,7 +641,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   type: 1
-  material: {fileID: 11400000, guid: 976277892981f6043b2ffcc9719bb6d6, type: 2}
+  material: {fileID: 11400000, guid: abb1b8c38bf81c449b48c809edbe2021, type: 2}
 --- !u!4 &814752978
 Transform:
   m_ObjectHideFlags: 0
@@ -737,7 +737,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   m_LocalRotation: {x: 0, y: -0.7071068, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 2.19, y: 1.43, z: 0}
+  m_LocalPosition: {x: -0.09, y: 1.88, z: 0.76}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -825,7 +825,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   type: 1
-  material: {fileID: 11400000, guid: 976277892981f6043b2ffcc9719bb6d6, type: 2}
+  material: {fileID: 11400000, guid: abb1b8c38bf81c449b48c809edbe2021, type: 2}
 --- !u!4 &972187258
 Transform:
   m_ObjectHideFlags: 0
