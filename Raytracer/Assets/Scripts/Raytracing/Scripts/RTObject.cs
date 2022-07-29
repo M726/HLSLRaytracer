@@ -16,7 +16,6 @@ namespace M726Raytracing {
 
         public PBRMaterial material;
 
-        private ObjectType lastObjectType;
 
 
         public RTObject(ObjectType objectType) {
@@ -28,24 +27,6 @@ namespace M726Raytracing {
         }
 
         private void Update() {
-            if (lastObjectType != type) {
-                switch (type) {
-                    case ObjectType.Sphere: {
-                        transform.localScale = Vector3.one * (1f / Mathf.Sqrt(12));
-                        break;
-                    }
-                    case ObjectType.Plane: {
-                        transform.localScale = Vector3.one;
-                        break;
-                    }
-                    case ObjectType.Cube: {
-                        transform.localScale = Vector3.one;
-                        break;
-                    }
-                }
-                lastObjectType = type;
-            }
-
             position = transform.position;
             localScale = transform.localScale;
 

@@ -13,6 +13,7 @@ RWTexture2D<float4> Result;
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
 float _RandomSeed;
+int _Rays;
 
 static const float PI = 3.14159265f;
 static const float3 f3one = float3(1.0, 1.0, 1.0);
@@ -116,7 +117,6 @@ struct ShaderObject
 };
 struct Ray
 {
-    int hitObject;
     float3 origin;
     float3 direction;
 };
@@ -192,21 +192,25 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
     float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
     float3 normal = mul(rotationMatrix, float3(0, 1, 0)); //TODO: precompute this - it should take far fewer calculations
     
+    
+    
     float normalDotDirection = dot(normal, ray.direction);
-    if (normalDotDirection < 0)
-    { 
-        float t = dot((object.position - ray.origin), normal) / normalDotDirection;
-        float3 hitPoint = ray.origin + ray.direction * t;
-        if (t > 0 && t < bestHit.distance)
+    
+    float t = dot((object.position - ray.origin), normal) / normalDotDirection;
+    float3 hitPoint = ray.origin + ray.direction * t;
+    if (t > 0 && t < bestHit.distance)
+    {
+        float3 localposition = mul(transpose(rotationMatrix), float3(hitPoint-object.position));
+        if (abs(localposition.z) <= object.scale.z / 2 && abs(localposition.x) <= object.scale.x / 2)
         {
-            float3 localposition = mul(transpose(rotationMatrix), float3(hitPoint-object.position));
-            if (abs(localposition.z) < object.scale.z / 2 && abs(localposition.x) < object.scale.x / 2)
+            if (dot(normal, ray.direction) > 0)
             {
-                bestHit.position = hitPoint;
-                bestHit.normal = normalize(normal);
-                bestHit.distance = t;
-                bestHit.mat = object.material;
+                normal = -normal;
             }
+            bestHit.position = hitPoint;
+            bestHit.normal = normalize(normal);
+            bestHit.distance = t;
+            bestHit.mat = object.material;
         }
     }
 }
@@ -215,21 +219,24 @@ void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
 {
     float3 dPosition = ray.origin - object.position;
     float uDotDPosition = -dot(ray.direction, dPosition);
-    float del = pow(uDotDPosition, 2) - (dot(dPosition, dPosition) - pow(length(object.scale), 2));
+    float del = pow(uDotDPosition, 2) - (dot(dPosition, dPosition) - pow(object.scale.x, 2));
 
     if (del < 0)
         return; //No Intersection
     
     float sqrtDel = sqrt(del);
-    float distanceFromLineOrigin = uDotDPosition - sqrtDel > 0 ? uDotDPosition - sqrtDel : uDotDPosition + sqrtDel;
-    float3 position = ray.origin + distanceFromLineOrigin * ray.direction;
-    
-    if (!(dot((position - object.position), ray.direction) > 0)
-        && distanceFromLineOrigin < bestHit.distance)
+    float t = uDotDPosition - sqrtDel > 0 ? uDotDPosition - sqrtDel : uDotDPosition + sqrtDel;
+    if (t > 0 && t < bestHit.distance)
     {
+        float3 position = ray.origin + t * ray.direction;
+        float3 normal = normalize(position - object.position);
+        if (dot(normal, ray.direction) > 0)
+        {
+            normal = -normal;
+        }
         bestHit.position = position;
-        bestHit.normal = normalize(position - object.position);
-        bestHit.distance = distanceFromLineOrigin;
+        bestHit.normal = normal;
+        bestHit.distance = t;
         bestHit.mat = object.material;
     }
 }
@@ -237,6 +244,8 @@ RayHit Trace(Ray ray)
 {
     //Empty Ray Collision
     ray.direction = normalize(ray.direction);
+    //ray.origin += ray.direction * 0.001f;
+    
     RayHit bestHit = CreateRayHit();
     
     uint numObjects, stride;
@@ -252,47 +261,43 @@ RayHit Trace(Ray ray)
                 IntersectionTestPlane(_Objects[i], ray, bestHit);
                 break;
         }
-
     }
-    
     return bestHit;
 }
+
 float3 ShadowRay(RayHit hit)
 {
-    float3 color = float3(1, 1, 1);
-    float3 position = float3(-1, 1.5, 1.5);
-        float distance = length(position - hit.position);
-        Ray ray;
-        ray.direction = normalize(position - hit.position);
-        ray.origin = hit.position;
-        if (Trace(ray).distance > distance) //collision before light
-        {
-            //intensity += dot(hit.normal, ray.direction) * _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
-            return color * 10 / (distance * distance * 4.0 * PI);
-        }
+    float3 color = float3(1, 0.95, 0.9);
+    float3 position = float3(-0.5, 4, 0.5);
+    float lightDistance = length(position - hit.position);
+    
+    Ray ray;
+    ray.direction = normalize(position - hit.position);
+    ray.origin = hit.position + hit.normal * 0.001f;
+    RayHit lightHit = Trace(ray);
+    if (lightHit.distance > lightDistance && hit.distance < 1.#INF) //collision before light
+    {
+        //intensity += dot(hit.normal, ray.direction) * _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
+        //float distance = lightHit.distance;
+        //return color * 10 / (distance * distance * 4.0 * PI);
+        
+        //return f3one;
+        return dot(hit.normal, ray.direction) * color * 0 / (lightDistance * lightDistance * 4.0 * PI);
+    }
     return f3zero;
-}
-
-float3 Shade(RayHit hit, float3 colorMultiplier)
-{
-    //return ShadowRay(hit);
-    //return colorMultiplier; //(ShadowRay(hit) + hit.mat.emissivity ) * (hit.mat.diffuseColor);
-    return colorMultiplier * (ShadowRay(hit));
 }
 float3 RayTrace(Ray ray)
 {
-    
     RayHit hit = CreateRayHit();
-    //Cast Ray
-    hit = Trace(ray);
+    float3 result = f3zero;
+    float3 colorMultiplier = f3one;
     
-    float3 colorMultiplier = f3zero;
-    float3 result = Shade(hit, colorMultiplier);
-    colorMultiplier = hit.mat.diffuseColor;
-    
-    for (uint i = 0; i < 100; i++)
+    for (int i = 0; i < _Rays; i++)
     {
-        if (hit.distance < 1.#INF)
+        hit = Trace(ray);
+        
+        result += (ShadowRay(hit) + hit.mat.emissiveColor * hit.mat.emissive) * colorMultiplier;
+        if (hit.distance < 1.#INF && length(colorMultiplier) > 0.01f)
         {
             float n1 = 1.0;
             float n2 = hit.mat.refraction;
@@ -303,34 +308,21 @@ float3 RayTrace(Ray ray)
             float reflectance = (rs + rp) / 2.0;
             
             
-            ray.origin = hit.position;
+            ray.origin = hit.position + hit.normal * 0.001f;
             
             if (randBool(ray.direction.x * ray.direction.y * ray.direction.z, reflectance))
             {
-                //Specular reflection 
-                    //TODO: Add specular roughness
+                colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
                 float3 mirrorScatteringDirection = reflect(ray.direction, hit.normal);
                 ray.direction = mirrorScatteringDirection;
-                hit = Trace(ray);
-                hit.mat.diffuseColor = f3one;
-                result += Shade(hit, colorMultiplier) * hit.mat.specular;
-            }else{
-                //Diffuse Reflection
+            }else{ 
+                colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                 float3 lambertianScatteringDirection = rand3(ray.direction);
-                lambertianScatteringDirection = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
-                ray.direction = lambertianScatteringDirection;
-                hit = Trace(ray);
-                result += Shade(hit, colorMultiplier) * hit.mat.diffuse;
-                colorMultiplier *= hit.mat.diffuseColor;
+                ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
             }
-            
-            
+
         }
-        else
-        {
-            //result *= float3(0.78, 0.88, 1.0) * (0.2 * (dot(ray.direction, normalize(float3(1, 5, 1))) - 1) + 1);
-            break;
-        }
+        else break;
     }
     return result;
 }

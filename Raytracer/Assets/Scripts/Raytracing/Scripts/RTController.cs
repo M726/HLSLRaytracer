@@ -12,7 +12,7 @@ namespace M726Raytracing {
         private RTSceneManager sceneManager;
 
         [Header("Camera")]
-        [Range(2, 64)]
+        [Min(1)]
         public int samples = 16;
         [Range(0f, 179f)]
         public float fov = 90f;
@@ -74,7 +74,7 @@ namespace M726Raytracing {
             computeBuffers.Add(uvBuffer);
 
             raytracingShader.SetBuffer(0, "_PixelOffset", uvBuffer);
-
+            raytracingShader.SetInt("_Rays", samples);
             raytracingShader.SetMatrix("_CameraToWorld", _camera.cameraToWorldMatrix);
             raytracingShader.SetMatrix("_CameraInverseProjection", _camera.projectionMatrix.inverse);
             raytracingShader.SetVector("_ClippingPlanes", new Vector4(clippingDistance, drawDistance));
