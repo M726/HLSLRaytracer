@@ -62,7 +62,7 @@ namespace M726Raytracing {
         private void SetShaderScene() {
             sceneManager.UpdateSceneObjects();
             ShaderObject[] shaderObjects = sceneManager.GetShaderObjects();
-            ComputeBuffer objectBuffer = new ComputeBuffer(shaderObjects.Length, sizeof(float) * 23 + sizeof(int) * 2);
+            ComputeBuffer objectBuffer = new ComputeBuffer(shaderObjects.Length, sizeof(float) * 26 + sizeof(int) * 2);
             objectBuffer.SetData(shaderObjects);
             raytracingShader.SetBuffer(0, "_Objects", objectBuffer);
             computeBuffers.Add(objectBuffer);

@@ -37,12 +37,17 @@ namespace M726Raytracing {
         [Range(0f, 10f)]
         private float emissivityIntensity = 0.0f;
 
+        [Header("Transmission")]
+        [SerializeField]
+        private Color transmissiveColorPicker = Color.white;
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float opacity = 0.0f;
+
         [Header("Refractive Index")]
         [SerializeField]
+        [Min(1)]
         private float refractionIndex = 1.1f;
-        [SerializeField]
-        [Range(0f, 10f)]
-        private float extinctionCoefficient = 0f;
 
 
 
@@ -50,84 +55,51 @@ namespace M726Raytracing {
         public Vector3 GetDiffuseColor() {
             return new Vector3(diffuseColorPicker.r, diffuseColorPicker.g, diffuseColorPicker.b);
         }
-        public void SetDiffuseColor(Vector3 diffuseColor) {
-            diffuseColorPicker = new Color(diffuseColor.x, diffuseColor.y, diffuseColor.z);
-        }
-        public void SetDiffuseColor(Color color) {
-            SetDiffuseColor(new Vector3(color.r, color.g, color.b));
-        }
-        public void SetDiffuseColor(float r, float g, float b) {
-            SetDiffuseColor(new Vector3(r, g, b));
-        }
 
         //Specular Color
         public Vector3 GetSpedularColor() {
             return new Vector3(specularColorPicker.r, specularColorPicker.g, specularColorPicker.b);
-        }
-        public void SetSpecularColor(Vector3 specularColor) {
-            specularColorPicker = new Color(specularColor.x, specularColor.y, specularColor.z);
-        }
-        public void SetSpecularColor(Color color) {
-            SetSpecularColor(new Vector3(color.r, color.g, color.b));
-        }
-        public void SetSpecularColor(float r, float g, float b) {
-            SetSpecularColor(new Vector3(r, g, b));
         }
 
         //Diffuse Fraction
         public float GetDiffuse() {
             return diffuse;
         }
-        public void SetDiffuse(float a) {
-            diffuse = a;
-        }
 
         //Specular Fraction
         public float GetSpecular() {
             return specular;
         }
-        public void SetSpecular(float a) {
-            specular = a;
-        }
 
         //refraction index
-        public void SetRefractionIndex(float rI) {
-            refractionIndex = rI;
-        }
         public float GetRefractionIndex() {
             return refractionIndex;
-        }
-        public float GetExtinctionCoefficient() {
-            return extinctionCoefficient;
-        }
-        public void SetExtinctionCoefficient(float eC) {
-            extinctionCoefficient = eC;
         }
 
         public Vector3 GetEmissiveColor() {
             return new Vector3(emissiveColorPicker.r, emissiveColorPicker.g, emissiveColorPicker.b);
         }
-        public void SetEmissiveColor(Vector3 emissiveColor) {
-            emissiveColorPicker = new Color(emissiveColor.x, emissiveColor.y, emissiveColor.z);
-        }
         public float GetEmissive() {
             return emissivityIntensity;
         }
-        public void SetEmissive(float emissive) {
-            this.emissivityIntensity = emissive;
+
+        public Vector3 GetTransmissiveColor() {
+            return new Vector3(transmissiveColorPicker.r, transmissiveColorPicker.g, transmissiveColorPicker.b);
+        }
+        public float GetOpacity() {
+            return opacity;
         }
 
-        public MaterialProperties GetMaterialProperties() {
-            return new MaterialProperties {
-                diffuseColor = GetDiffuseColor(),
-                specularColor = GetSpedularColor(),
-                emissiveColor = GetEmissiveColor(),
-                diffuse = GetDiffuse(),
-                specular = GetSpecular(),
-                emissive = GetEmissive(),
-                refraction = GetRefractionIndex(),
-                extinction = GetExtinctionCoefficient()
-            };
-        }
+        public MaterialProperties GetMaterialProperties() => new MaterialProperties {
+            diffuseColor = GetDiffuseColor(),
+            specularColor = GetSpedularColor(),
+            emissiveColor = GetEmissiveColor(),
+            transmissionColor = GetTransmissiveColor(),
+            diffuse = GetDiffuse(),
+            specular = GetSpecular(),
+            emissive = GetEmissive(),
+            opacity = GetOpacity(),
+            refraction = GetRefractionIndex(),
+        };
     }
 }

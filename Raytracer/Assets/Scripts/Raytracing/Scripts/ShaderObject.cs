@@ -12,9 +12,9 @@ namespace M726Raytracing{
     }
 
     public struct MaterialProperties {
-        public Vector3 diffuseColor, specularColor, emissiveColor;
-        public float diffuse, specular, emissive;
-        public float refraction, extinction;
+        public Vector3 diffuseColor, specularColor, emissiveColor, transmissionColor;
+        public float diffuse, specular, emissive, opacity;
+        public float refraction;
     }
 
     public enum ObjectType {

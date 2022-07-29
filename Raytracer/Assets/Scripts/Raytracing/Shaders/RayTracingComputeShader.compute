@@ -99,11 +99,13 @@ struct MaterialProperties
     float3 diffuseColor;
     float3 specularColor;
     float3 emissiveColor;
+    float3 transmissiveColor;
     float diffuse;
     float specular;
     float emissive;
+    float opacity;
     float refraction;
-    float extinction;
+    
 };
 
 struct ShaderObject
@@ -152,11 +154,12 @@ MaterialProperties CreateMaterial()
     mat.diffuseColor = f3one;
     mat.diffuse = 1;
     mat.emissive = 0;
-    mat.emissiveColor = float3(1, 1, 1);
+    mat.emissiveColor = f3one;
     mat.specular = 1;
-    mat.specularColor = float3(1, 1, 1);
+    mat.specularColor = f3one;
     mat.refraction = 1;
-    mat.extinction = 3;
+    mat.transmissiveColor = f3zero;
+    mat.opacity = 0;
     return mat;
 }
 
@@ -164,8 +167,8 @@ RayHit CreateRayHit()
 {
     RayHit ret;
     ret.distance = 1.#INF; //any hit should be less than this.
-    ret.position = float3(0.0, 0.0, 0.0);
-    ret.normal = float3(0.0, 0.0, 0.0);
+    ret.position = f3zero;
+    ret.normal = f3zero;
     ret.mat = CreateMaterial();
     return ret;
 
@@ -205,10 +208,13 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
         {
             if (dot(normal, ray.direction) > 0)
             {
-                normal = -normal;
+                bestHit.normal = -normalize(normal);
+            }
+            else
+            {
+                bestHit.normal = normalize(normal);
             }
             bestHit.position = hitPoint;
-            bestHit.normal = normalize(normal);
             bestHit.distance = t;
             bestHit.mat = object.material;
         }
@@ -232,10 +238,13 @@ void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
         float3 normal = normalize(position - object.position);
         if (dot(normal, ray.direction) > 0)
         {
-            normal = -normal;
+            bestHit.normal = -normal;
+        }
+        else
+        {
+            bestHit.normal = normal;
         }
         bestHit.position = position;
-        bestHit.normal = normal;
         bestHit.distance = t;
         bestHit.mat = object.material;
     }
@@ -273,7 +282,7 @@ float3 ShadowRay(RayHit hit)
     
     Ray ray;
     ray.direction = normalize(position - hit.position);
-    ray.origin = hit.position + hit.normal * 0.001f;
+    ray.origin = hit.position + hit.normal * 0.00001f;
     RayHit lightHit = Trace(ray);
     if (lightHit.distance > lightDistance && hit.distance < 1.#INF) //collision before light
     {
@@ -286,6 +295,7 @@ float3 ShadowRay(RayHit hit)
     }
     return f3zero;
 }
+
 float3 RayTrace(Ray ray)
 {
     RayHit hit = CreateRayHit();
@@ -303,24 +313,32 @@ float3 RayTrace(Ray ray)
             float n2 = hit.mat.refraction;
             float theta1 = acos(dot(normalize(hit.normal), normalize(-ray.direction)));
             float theta2 = asin((n1 / n2 * sin(theta1)));
-            float rs = pow(abs((n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2))), 2);
-            float rp = pow(abs((n1 * cos(theta2) - n2 * cos(theta1)) / (n1 * cos(theta2) + n2 * cos(theta1))), 2);
+            float rs = pow((n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2)), 2);
+            float rp = pow((n1 * cos(theta2) - n2 * cos(theta1)) / (n1 * cos(theta2) + n2 * cos(theta1)), 2);
             float reflectance = (rs + rp) / 2.0;
             
             
-            ray.origin = hit.position + hit.normal * 0.001f;
+            ray.origin = hit.position + hit.normal * 0.00001f;
             
             if (randBool(ray.direction.x * ray.direction.y * ray.direction.z, reflectance))
             {
+                //Reflection
                 colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
                 float3 mirrorScatteringDirection = reflect(ray.direction, hit.normal);
                 ray.direction = mirrorScatteringDirection;
             }else{ 
-                colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
-                float3 lambertianScatteringDirection = rand3(ray.direction);
-                ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
+                //Refraction
+                if (hit.mat.opacity == 0)
+                {
+                    colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
+                    float3 lambertianScatteringDirection = rand3(ray.direction);
+                    ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
+                }
+                else
+                {
+                    ray.origin = hit.position - hit.normal * 0.00003f;
+                }
             }
-
         }
         else break;
     }
