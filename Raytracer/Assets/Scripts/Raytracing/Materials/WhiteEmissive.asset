@@ -17,7 +17,7 @@ MonoBehaviour:
   specularColorPicker: {r: 1, g: 1, b: 1, a: 1}
   specular: 1
   emissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
-  emissivityIntensity: 0.84
+  emissivityIntensity: 0.8
   transmissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
   opacity: 0
   refractionIndex: 1.1

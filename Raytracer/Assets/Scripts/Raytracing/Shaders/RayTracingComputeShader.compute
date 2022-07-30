@@ -16,6 +16,8 @@ float _RandomSeed;
 int _Rays;
 
 static const float PI = 3.14159265f;
+static const float eps = 0.00001f;
+
 static const float3 f3one = float3(1.0, 1.0, 1.0);
 static const float3 f3zero = float3(0.0, 0.0, 0.0);
 
@@ -282,36 +284,26 @@ RayHit Trace(Ray ray)
     return bestHit;
 }
 
-float3 ShadowRay(RayHit hit)
-{
-    float3 color = float3(1, 0.95, 0.9);
-    float3 position = float3(-0.5, 4, 0.5);
-    float lightDistance = length(position - hit.position);
-    
-    Ray ray;
-    ray.n = 1;
-    ray.direction = normalize(position - hit.position);
-    ray.origin = hit.position + hit.normal * 0.00001f;
-    RayHit lightHit = Trace(ray);
-    if (lightHit.distance > lightDistance && hit.distance < 1.#INF) //collision before light
-    {
-        //intensity += dot(hit.normal, ray.direction) * _LightPoint[light].color * _LightPoint[light].intensity / (distance * distance * 4.0 * PI);
-        //float distance = lightHit.distance;
-        //return color * 10 / (distance * distance * 4.0 * PI);
-        
-        //return f3one;
-        return dot(hit.normal, ray.direction) * color * 0 / (lightDistance * lightDistance * 4.0 * PI);
-    }
-    return f3zero;
-}
-
 float3 RefractRay(float n1, float n2, float3 direction, float3 normal)
 {
     direction = normalize(direction);
     normal = normalize(-normal);
     float dirDotNormal = dot(direction, normal);
-    return (direction - normal * dirDotNormal + normal * sqrt(n2 * n2 - n1 * n1 + dirDotNormal * dirDotNormal));
-
+    return normalize((direction - normal * dirDotNormal + normal * sqrt(n2 * n2 - n1 * n1 + dirDotNormal * dirDotNormal)));
+}
+float ReflectionCoefficient(float n1, float n2, float3 direction, float3 normal)
+{
+    float theta1 = acos(dot(normalize(normal), normalize(-direction)));
+    
+    float sinTheta2 = (n1 / n2 * sin(theta1));
+    if(sinTheta2 > 1)
+        return 1; //Total Internal Reflection
+    
+    float theta2 = asin(sinTheta2);
+    
+    float rsSqrt = (n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2));
+    float rpSqrt = (n1 * cos(theta2) - n2 * cos(theta1)) / (n1 * cos(theta2) + n2 * cos(theta1));
+    return (rsSqrt * rsSqrt + rpSqrt * rpSqrt) / 2.0;
 }
 
 float3 RayTrace(Ray ray)
@@ -324,56 +316,50 @@ float3 RayTrace(Ray ray)
     {
         hit = Trace(ray);
         
-        result += (ShadowRay(hit) + hit.mat.emissiveColor * hit.mat.emissive) * colorMultiplier;
+        result += (hit.mat.emissiveColor * hit.mat.emissive) * colorMultiplier;
         if (hit.distance < 1.#INF && length(colorMultiplier) > 0.01f)
         {
-            float n1 = ray.n;
-            float n2 = hit.mat.refraction;
-            float theta1 = acos(dot(normalize(hit.normal), normalize(-ray.direction)));
-            
-            float theta2 = asin((n1 / n2 * sin(theta1)));
-            float rs = pow((n1 * cos(theta1) - n2 * cos(theta2)) / (n1 * cos(theta1) + n2 * cos(theta2)), 2);
-            float rp = pow((n1 * cos(theta2) - n2 * cos(theta1)) / (n1 * cos(theta2) + n2 * cos(theta1)), 2);
-            float reflectance = (rs + rp) / 2.0;
+            float reflectance = ReflectionCoefficient(ray.n, hit.mat.refraction, ray.direction, hit.normal);
             
             
             ray.origin = hit.position + hit.normal * 0.00001f;
             
-            if (randBool(ray.direction.x * ray.direction.y * ray.direction.z, reflectance))
+            if (randBool(ray.direction.x + ray.direction.y*10 + ray.direction.z*100, reflectance))
             {
                 //Reflection
                 colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
-                float3 mirrorScatteringDirection = reflect(ray.direction, hit.normal);
-                ray.direction = mirrorScatteringDirection;
+                ray.direction = reflect(ray.direction, hit.normal);;
             }
             else
             {
                 //Refraction
                 if (hit.mat.opacity == 0)
                 {
-                    colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                     float3 lambertianScatteringDirection = rand3(ray.direction);
                     ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
+                    
+                    colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                 }
                 else
                 {
                     ray.origin = hit.position - hit.normal * 0.00003f; //Cross boundary
                     if (ray.n != hit.mat.refraction) //Refract
                     {
-                        //Entering Object
+                        //Entering Object - opacity:0 normal, opacity:1 transparent
                         ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
-                        colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                         ray.n = hit.mat.refraction;
-                        //ray.direction = refract(ray.direction, hit.normal, hit.mat.refraction);
-                        //return f3one * theta2 / (PI);
 
+                        colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                     }
                     else
                     {
                         ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
                         ray.n = 1;
 
+                        //Color through material - opacity/(distance + opacity*(1-distance)) seems to work alright - need to fix for low opacity values.
                         colorMultiplier *= hit.mat.transmissiveColor * (hit.mat.opacity / (hit.distance + hit.mat.opacity * (1 - hit.distance))); //Fix this
+                        
+                        //Maybe try to sample the opacity intensity function and start a new ray in the material - would add subsurface scattering and begin work for mei/rayleigh 
                     }
                 }
             }
@@ -394,12 +380,16 @@ Ray CreateRay(float3 origin, float3 direction)
 }
 Ray CreateCameraRay(double2 uv)
 {
+    //Alright realistically, we don't need to transform the camera position/rotation and could do the inverse for easier culling?
+    //something to try at some point.
+    
     // Transform the camera origin to world space
     double3 origin = mul(_CameraToWorld, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
     
-    // Invert the perspective projection of the view-space position
+    //direction of cam ray
     double3 direction = mul(_CameraInverseProjection, float4(uv, 0.0f, 1.0f)).xyz;
-    // Transform the direction from camera to world space and normalize
+    
+    //MMMMMMMmmmmmmMMMmmaaaatttrrrriiixxxxxxx
     direction = mul(_CameraToWorld, float4(direction, 0.0f)).xyz;
     direction = (direction / length(direction));
     
@@ -421,7 +411,4 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     float3 result = RayTrace(ray);
     
     Result[id.xy] = float4(result, 1.0);
-    //Result[id.xy] = float4(0.5, 0.5, 0.5, 1.0); //Test output color
-    
-    //Result[id.xy] = float4(id.x & id.y, (id.x & 15) / 15.0, (id.y & 15) / 15.0, 0.0);
 }

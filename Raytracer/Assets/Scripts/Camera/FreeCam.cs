@@ -53,11 +53,15 @@ public class FreeCam : MonoBehaviour{
 			else if (Input.GetKey(KeyCode.Q))
 				upMove = -1;
 
-
 			Vector3 targetVelocity = (new Vector3(rightMove, upMove, forwardMove)).normalized * speed;
-			currentVelocity = Vector3.Lerp(currentVelocity, targetVelocity, Time.deltaTime * 7f);
 
-			transform.Translate(currentVelocity * Time.deltaTime);
+			if (Input.GetKey(KeyCode.LeftControl))
+				targetVelocity *= 0.5f;
+			else if (Input.GetKey(KeyCode.LeftShift))
+				targetVelocity *= 2f;
+
+
+			transform.Translate(targetVelocity * Time.deltaTime);
 		}
 	}
 }
