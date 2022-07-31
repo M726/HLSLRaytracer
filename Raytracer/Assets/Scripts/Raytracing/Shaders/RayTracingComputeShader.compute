@@ -20,6 +20,9 @@ static const float eps = 0.00001f;
 
 static const float3 f3one = float3(1.0, 1.0, 1.0);
 static const float3 f3zero = float3(0.0, 0.0, 0.0);
+static const float3 f3X = float3(1, 0, 0);
+static const float3 f3Y = float3(0, 1, 0);
+static const float3 f3Z = float3(0, 0, 1);
 
 //Camera Setup
 float2 _ClippingPlanes;
@@ -40,40 +43,28 @@ float3x3 GetRotationMatrix(float3 angles)
     float cb = cos(yaw);
     float cc = cos(roll);
     
-    float3x3 mpitch = float3x3(ca, -sa, 0, sa, ca, 0, 0, 0, 1);
-    float3x3 myaw = float3x3(cb, 0, sb, 0, 1, 0, -sb, 0, cb);
-    float3x3 mroll = float3x3(1, 0, 0, 0, cc, -sc, 0, sc, cc);
+    //float3x3 myaw = float3x3(cb, 0, sb, 
+    //                         0, 1, 0, 
+    //                         -sb, 0, cb);
     
-    //yaw->roll
-    //yaw->pitch
-    return mul(myaw, mul(mroll, mpitch));
+    //float3x3 mroll = float3x3(1, 0, 0, 
+    //                          0, cc, -sc, 
+    //                          0, sc, cc);
     
-    //return float3x3(
-    //    ca * cb, ca * sb * sc - sa * cc, ca * sb * cc + sa * sc,
-    //    sa * cb, sa * sb * sc + ca * cc, sa * sb * cc - ca * sc,
-    //    -sb, cb * sc, cb * cc);
+    //float3x3 mpitch = float3x3(ca, -sa, 0, 
+    //                           sa, ca, 0,
+    //                            0, 0, 1);
+    
+    //return mul(myaw, mul(mroll, mpitch)); //Works for sure.
+    
+    return float3x3(
+                    cb*ca + sb*sc*sa, -sa*cb + sb * sc * ca, sb*cc,
+                    cc * sa,cc * ca,-sc,
+                    -sb * ca + cb * sc * sa, -sb*-sa+ cb * sc * ca,cb * cc
+    );
 
 }
 
-float3x3 GetRotationMatrix(float4 quaternion)
-{
-    float4 q = float4(-quaternion.x, quaternion.y, quaternion.z, quaternion.w) / length(quaternion);
-    
-    float m11 = 1 - 2 * (q.y * q.y + q.z * q.z);
-    float m12 = 2 * (q.x * q.y - q.z * q.w);
-    float m13 = 2 * (q.x * q.z + q.y * q.w);
-    
-    float m21 = 2 * (q.x * q.y + q.z * q.w);
-    float m22 = 1 - 2 * (q.x * q.x + q.z * q.z);
-    float m23 = 2 * (q.y * q.z - q.x * q.w);
-    
-    float m31 = 2 * (q.x * q.z - q.y * q.w);
-    float m32 = 2 * (q.y * q.z - q.x * q.w);
-    float m33 = 1 - 2 * (q.x * q.x + q.y * q.y);
-    
-    return float3x3(m11, m12, m13, m21, m22, m23, m31, m32, m33);
-    //return float3x3(m11, m13, m12, m21, m23, m22, m31, m33, m32);
-}
 float3x3 GetInverseMatrix(float3x3 r)
 {
     //I'm almost certain this works based on AA^-1=I tests
@@ -224,6 +215,75 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
     }
 }
 
+void IntersectionTestCube(ShaderObject object, Ray ray, inout RayHit bestHit)
+{
+    float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
+    float3x3 rotationMatrixInverse = transpose(rotationMatrix);
+    
+    float3 rayDirectionLocal = mul(rotationMatrixInverse, ray.direction);
+    float3 rayOriginLocal = mul(rotationMatrixInverse, object.position - ray.origin);
+    
+    int inside = -1;
+    if (abs(rayOriginLocal.x) < object.scale.x &&
+        abs(rayOriginLocal.y) < object.scale.y &&
+        abs(rayOriginLocal.z) < object.scale.z)
+        inside = 1;
+    
+    //X
+    float3 rayOriginLocalX = rayOriginLocal + inside * sign(rayDirectionLocal.x) * object.scale.x / 2;
+    float tLocalX = dot(rayOriginLocalX, f3X) / rayDirectionLocal.x;
+    
+    float3 hitPointX = ray.origin + ray.direction * tLocalX;
+    float3 hitPointLocalX = mul(rotationMatrixInverse, hitPointX - object.position);
+    
+    //Y
+    float3 rayOriginLocalY = rayOriginLocal + inside * sign(rayDirectionLocal.y) * object.scale.y / 2;
+    float tLocalY = dot(rayOriginLocalY, f3Y) / rayDirectionLocal.y;
+    
+    float3 hitPointY = ray.origin + ray.direction * tLocalY;
+    float3 hitPointLocalY = mul(rotationMatrixInverse, hitPointY - object.position);
+    
+    //Z
+    float3 rayOriginLocalZ = rayOriginLocal + inside * sign(rayDirectionLocal.z) * object.scale.z / 2;
+    float tLocalZ = dot(rayOriginLocalZ, f3Z) / rayDirectionLocal.z;
+    
+    float3 hitPointZ = ray.origin + ray.direction * tLocalZ;
+    float3 hitPointLocalZ = mul(rotationMatrixInverse, hitPointZ - object.position);
+    
+    
+    
+    if (tLocalX > 0 && tLocalX < bestHit.distance)
+    {
+        if (abs(hitPointLocalX.z) <= object.scale.z / 2 && abs(hitPointLocalX.y) <= object.scale.y / 2)
+        {
+            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.x) * f3X));
+            bestHit.position = hitPointX;
+            bestHit.distance = tLocalX;
+            bestHit.mat = object.material;
+        }
+    }
+    if (tLocalY > 0 && tLocalY < bestHit.distance)
+    {
+        if (abs(hitPointLocalY.z) <= object.scale.z / 2 && abs(hitPointLocalY.x) <= object.scale.x / 2)
+        {
+            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.y) * f3Y));
+            bestHit.position = hitPointY;
+            bestHit.distance = tLocalY;
+            bestHit.mat = object.material;
+        }
+    }
+    if (tLocalZ > 0 && tLocalZ < bestHit.distance)
+    {
+        if (abs(hitPointLocalZ.x) <= object.scale.x / 2 && abs(hitPointLocalZ.y) <= object.scale.y / 2)
+        {
+            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.z) * f3Z));
+            bestHit.position = hitPointZ;
+            bestHit.distance = tLocalZ;
+            bestHit.mat = object.material;
+        }
+    }
+}
+
 void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
 {
     float3 dPosition = ray.origin - object.position;
@@ -238,6 +298,8 @@ void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
     if (t > 0 && t < bestHit.distance)
     {
         float3 position = ray.origin + t * ray.direction;
+        
+        
         float3 normal = normalize(position - object.position);
         if (dot(normal, ray.direction) > 0)
         {
@@ -256,7 +318,6 @@ RayHit Trace(Ray ray)
 {
     //Empty Ray Collision
     ray.direction = normalize(ray.direction);
-    //ray.origin += ray.direction * 0.001f;
     
     RayHit bestHit = CreateRayHit();
     
@@ -275,7 +336,7 @@ RayHit Trace(Ray ray)
                     IntersectionTestPlane(_Objects[i], ray, bestHit);
                     break;
                 case 2:
-                //IntersectionTestCube(_Objects[i], ray, bestHit);
+                    IntersectionTestCube(_Objects[i], ray, bestHit);
                     break;
 
             }
@@ -289,7 +350,7 @@ float3 RefractRay(float n1, float n2, float3 direction, float3 normal)
     direction = normalize(direction);
     normal = normalize(-normal);
     float dirDotNormal = dot(direction, normal);
-    return normalize((direction - normal * dirDotNormal + normal * sqrt(n2 * n2 - n1 * n1 + dirDotNormal * dirDotNormal)));
+    return (direction - normal * dirDotNormal + normal * sqrt(n2 * n2 - n1 * n1 + dirDotNormal * dirDotNormal));
 }
 float ReflectionCoefficient(float n1, float n2, float3 direction, float3 normal)
 {
@@ -322,13 +383,13 @@ float3 RayTrace(Ray ray)
             float reflectance = ReflectionCoefficient(ray.n, hit.mat.refraction, ray.direction, hit.normal);
             
             
-            ray.origin = hit.position + hit.normal * 0.00001f;
+            ray.origin = hit.position + hit.normal * eps;
             
             if (randBool(ray.direction.x + ray.direction.y*10 + ray.direction.z*100, reflectance))
             {
                 //Reflection
                 colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
-                ray.direction = reflect(ray.direction, hit.normal);;
+                ray.direction = reflect(ray.direction, hit.normal);
             }
             else
             {
@@ -342,7 +403,7 @@ float3 RayTrace(Ray ray)
                 }
                 else
                 {
-                    ray.origin = hit.position - hit.normal * 0.00003f; //Cross boundary
+                    ray.origin = hit.position - hit.normal * 3*eps; //Cross boundary
                     if (ray.n != hit.mat.refraction) //Refract
                     {
                         //Entering Object - opacity:0 normal, opacity:1 transparent
@@ -384,7 +445,7 @@ Ray CreateCameraRay(double2 uv)
     //something to try at some point.
     
     // Transform the camera origin to world space
-    double3 origin = mul(_CameraToWorld, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
+    double3 origin = mul(_CameraToWorld, float4(f3zero, 1.0f)).xyz;
     
     //direction of cam ray
     double3 direction = mul(_CameraInverseProjection, float4(uv, 0.0f, 1.0f)).xyz;
