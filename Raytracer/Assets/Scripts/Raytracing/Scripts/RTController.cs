@@ -78,7 +78,7 @@ namespace M726Raytracing {
             raytracingShader.SetMatrix("_CameraToWorld", _camera.cameraToWorldMatrix);
             raytracingShader.SetMatrix("_CameraInverseProjection", _camera.projectionMatrix.inverse);
             raytracingShader.SetVector("_ClippingPlanes", new Vector4(clippingDistance, drawDistance));
-            raytracingShader.SetFloat("_RandomSeed", UnityEngine.Random.value * _currentSample);
+            raytracingShader.SetFloat("_RandomSeed", _currentSample);
         }
 
         private void ReleaseBuffers() {

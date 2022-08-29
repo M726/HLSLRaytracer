@@ -18,5 +18,6 @@ MonoBehaviour:
   specular: 0.961
   emissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
   emissivityIntensity: 0
+  transmissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
+  opacity: 1
   refractionIndex: 714.22
-  extinctionCoefficient: 0

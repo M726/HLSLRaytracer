@@ -28,7 +28,7 @@ namespace M726Raytracing {
 
         private void Update() {
             position = transform.position;
-            localScale = transform.localScale;
+            localScale = transform.lossyScale;
 
             rotation = transform.rotation.eulerAngles * Mathf.Deg2Rad;
 
@@ -36,7 +36,6 @@ namespace M726Raytracing {
 
         public ShaderObject GetShaderObject() {
             return new ShaderObject {
-                id = id,
                 type = (int)type,
                 position = position,
                 scale = localScale,

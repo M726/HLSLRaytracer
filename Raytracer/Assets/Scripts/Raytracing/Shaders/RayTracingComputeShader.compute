@@ -121,6 +121,7 @@ struct RayHit
     float3 position;
     float3 normal;
     float distance;
+    bool inside;
     MaterialProperties mat;
 };
 struct LightDirectional
@@ -163,24 +164,57 @@ RayHit CreateRayHit()
     ret.distance = 1.#INF; //any hit should be less than this.
     ret.position = f3zero;
     ret.normal = f3zero;
+    ret.inside = false;
     ret.mat = CreateMaterial();
     return ret;
 
 }
 
-float rand(float2 co)
+float float3ToFloat(float3 a)
 {
-    return (frac(sin(dot(float2(co.xy), float2(12.9898, 78.233))) * 43758.5453)) * 1;
+    normalize(a);
+    return a.x + a.y * 10 + a.z * 100;
 }
-float3 rand3(float3 co)
+
+float randFloat(uint s)
 {
-    return float3(rand(co.xy * co.yy), rand(co.yz), rand(co.xz));
+    s ^= 2747636419u;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    return float(s) / 4294967295.0; // 2^32-1
 }
-bool randBool(float co, float cutoff)
+float randFloat(float s)
 {
-    if (rand(float2(co, co + 1)) < cutoff)
-        return true;
-    return false;
+    return randFloat(asuint(s));
+}
+float3 randFloat3(float s)
+{
+    return float3(2.0 * randFloat(s + _RandomSeed) - 1, 2.0 * randFloat(s + 1 + _RandomSeed) - 1, 2.0 * randFloat(s + 2 + _RandomSeed) - 1);
+}
+float3 randFloat3(float3 s)
+{
+    return randFloat3(float3ToFloat(s) + _RandomSeed);
+}
+float3 randDirection(float3 s)
+{
+    float3 f3 = float3(1, 1, 1);
+
+    while (length(f3) > 1.0)
+    {
+        f3 = randFloat3(s);
+    }
+    return f3;
+}
+bool randBool(float s, float p)
+{
+    return randFloat(s) <= p;
+}
+bool randBool(float3 s, float p)
+{
+    return randBool(float3ToFloat(s), p);
 }
 
 void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
@@ -188,8 +222,6 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
     //float3 normal = float3(0, 1, 0);
     float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
     float3 normal = mul(rotationMatrix, float3(0, 1, 0)); //TODO: precompute this - it should take far fewer calculations
-    
-    
     
     float normalDotDirection = dot(normal, ray.direction);
     
@@ -210,75 +242,6 @@ void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
             }
             bestHit.position = hitPoint;
             bestHit.distance = t;
-            bestHit.mat = object.material;
-        }
-    }
-}
-
-void IntersectionTestCube(ShaderObject object, Ray ray, inout RayHit bestHit)
-{
-    float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
-    float3x3 rotationMatrixInverse = transpose(rotationMatrix);
-    
-    float3 rayDirectionLocal = mul(rotationMatrixInverse, ray.direction);
-    float3 rayOriginLocal = mul(rotationMatrixInverse, object.position - ray.origin);
-    
-    int inside = -1;
-    if (abs(rayOriginLocal.x) < object.scale.x &&
-        abs(rayOriginLocal.y) < object.scale.y &&
-        abs(rayOriginLocal.z) < object.scale.z)
-        inside = 1;
-    
-    //X
-    float3 rayOriginLocalX = rayOriginLocal + inside * sign(rayDirectionLocal.x) * object.scale.x / 2;
-    float tLocalX = dot(rayOriginLocalX, f3X) / rayDirectionLocal.x;
-    
-    float3 hitPointX = ray.origin + ray.direction * tLocalX;
-    float3 hitPointLocalX = mul(rotationMatrixInverse, hitPointX - object.position);
-    
-    //Y
-    float3 rayOriginLocalY = rayOriginLocal + inside * sign(rayDirectionLocal.y) * object.scale.y / 2;
-    float tLocalY = dot(rayOriginLocalY, f3Y) / rayDirectionLocal.y;
-    
-    float3 hitPointY = ray.origin + ray.direction * tLocalY;
-    float3 hitPointLocalY = mul(rotationMatrixInverse, hitPointY - object.position);
-    
-    //Z
-    float3 rayOriginLocalZ = rayOriginLocal + inside * sign(rayDirectionLocal.z) * object.scale.z / 2;
-    float tLocalZ = dot(rayOriginLocalZ, f3Z) / rayDirectionLocal.z;
-    
-    float3 hitPointZ = ray.origin + ray.direction * tLocalZ;
-    float3 hitPointLocalZ = mul(rotationMatrixInverse, hitPointZ - object.position);
-    
-    
-    
-    if (tLocalX > 0 && tLocalX < bestHit.distance)
-    {
-        if (abs(hitPointLocalX.z) <= object.scale.z / 2 && abs(hitPointLocalX.y) <= object.scale.y / 2)
-        {
-            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.x) * f3X));
-            bestHit.position = hitPointX;
-            bestHit.distance = tLocalX;
-            bestHit.mat = object.material;
-        }
-    }
-    if (tLocalY > 0 && tLocalY < bestHit.distance)
-    {
-        if (abs(hitPointLocalY.z) <= object.scale.z / 2 && abs(hitPointLocalY.x) <= object.scale.x / 2)
-        {
-            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.y) * f3Y));
-            bestHit.position = hitPointY;
-            bestHit.distance = tLocalY;
-            bestHit.mat = object.material;
-        }
-    }
-    if (tLocalZ > 0 && tLocalZ < bestHit.distance)
-    {
-        if (abs(hitPointLocalZ.x) <= object.scale.x / 2 && abs(hitPointLocalZ.y) <= object.scale.y / 2)
-        {
-            bestHit.normal = normalize(mul(rotationMatrix, sign(-rayDirectionLocal.z) * f3Z));
-            bestHit.position = hitPointZ;
-            bestHit.distance = tLocalZ;
             bestHit.mat = object.material;
         }
     }
@@ -309,11 +272,14 @@ void IntersectionTestSphere(ShaderObject object, Ray ray, inout RayHit bestHit)
         {
             bestHit.normal = normal;
         }
+        
         bestHit.position = position;
         bestHit.distance = t;
         bestHit.mat = object.material;
     }
 }
+
+
 RayHit Trace(Ray ray)
 {
     //Empty Ray Collision
@@ -325,22 +291,21 @@ RayHit Trace(Ray ray)
     _Objects.GetDimensions(numObjects, stride);
     for (uint i = 0; i < numObjects; i++)
     {
-        if (ray.n == 1 || ray.n == _Objects[i].material.refraction)
+        switch (_Objects[i].type)
         {
-            switch (_Objects[i].type)
-            {
-                case 0:
-                    IntersectionTestSphere(_Objects[i], ray, bestHit);
-                    break;
-                case 1:
-                    IntersectionTestPlane(_Objects[i], ray, bestHit);
-                    break;
-                case 2:
-                    IntersectionTestCube(_Objects[i], ray, bestHit);
-                    break;
-
-            }
+            case 0:
+                IntersectionTestSphere(_Objects[i], ray, bestHit);
+                break;
+            case 1:
+                IntersectionTestPlane(_Objects[i], ray, bestHit);
+                break;
+            case 2:
+                //IntersectionTestCube(_Objects[i], ray, bestHit);
+                break;
         }
+        //if (ray.n == 1 || ray.n == _Objects[i].material.refraction)
+        //{
+        //}
     }
     return bestHit;
 }
@@ -372,56 +337,53 @@ float3 RayTrace(Ray ray)
     RayHit hit = CreateRayHit();
     float3 result = f3zero;
     float3 colorMultiplier = f3one;
+    //ray.n = 1.5;
     
     for (int i = 0; i < _Rays; i++)
     {
-        hit = Trace(ray);
-        
+        hit = Trace(ray); //Emit Ray & Get Hit Info
         result += (hit.mat.emissiveColor * hit.mat.emissive) * colorMultiplier;
-        if (hit.distance < 1.#INF && length(colorMultiplier) > 0.01f)
+        
+        //If ray hits something
+        if (hit.distance < 1.#INF && length(colorMultiplier) > 0.1f)
         {
+            //Calculate probability of reflection
             float reflectance = ReflectionCoefficient(ray.n, hit.mat.refraction, ray.direction, hit.normal);
-            
-            
             ray.origin = hit.position + hit.normal * eps;
             
-            if (randBool(ray.direction.x + ray.direction.y*10 + ray.direction.z*100, reflectance))
+            //Sample reflectance probability
+            if (randBool(ray.direction, reflectance))
             {
                 //Reflection
                 colorMultiplier *= hit.mat.specularColor * hit.mat.specular * reflectance;
                 ray.direction = reflect(ray.direction, hit.normal);
             }
+            else if (randBool(ray.direction, hit.mat.opacity))
+            {
+                //Scatter
+                float3 lambertianScatteringDirection = randDirection(ray.direction);
+                if (dot(lambertianScatteringDirection, hit.normal) > 0)
+                {
+                    -lambertianScatteringDirection;
+                }
+                ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection));
+                //return ray.direction;
+                colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
+                    
+            }
             else
             {
-                //Refraction
-                if (hit.mat.opacity == 0)
+                ray.origin = hit.position - 2 * hit.normal * eps;
+                //Refract
+                if (hit.mat.refraction == ray.n) //Leaving
                 {
-                    float3 lambertianScatteringDirection = rand3(ray.direction);
-                    ray.direction = normalize(lambertianScatteringDirection / length(lambertianScatteringDirection) + hit.normal);
-                    
-                    colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
+                    //ray.direction = refract(ray.direction, hit.normal, 1);
+                    //ray.n = 1;
                 }
-                else
+                else //Entering
                 {
-                    ray.origin = hit.position - hit.normal * 3*eps; //Cross boundary
-                    if (ray.n != hit.mat.refraction) //Refract
-                    {
-                        //Entering Object - opacity:0 normal, opacity:1 transparent
-                        ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
-                        ray.n = hit.mat.refraction;
-
-                        colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
-                    }
-                    else
-                    {
-                        ray.direction = RefractRay(ray.n, hit.mat.refraction, ray.direction, hit.normal);
-                        ray.n = 1;
-
-                        //Color through material - opacity/(distance + opacity*(1-distance)) seems to work alright - need to fix for low opacity values.
-                        colorMultiplier *= hit.mat.transmissiveColor * (hit.mat.opacity / (hit.distance + hit.mat.opacity * (1 - hit.distance))); //Fix this
-                        
-                        //Maybe try to sample the opacity intensity function and start a new ray in the material - would add subsurface scattering and begin work for mei/rayleigh 
-                    }
+                    ray.n = hit.mat.refraction;
+                    ray.direction = refract(ray.direction, hit.normal, ray.n);
                 }
             }
         }

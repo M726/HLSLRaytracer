@@ -10,14 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 247a56f2a6912dd4f9f034f32e999e06, type: 3}
-  m_Name: WhiteEmissive 1
+  m_Name: Blue
   m_EditorClassIdentifier: 
-  diffuseColorPicker: {r: 1, g: 1, b: 1, a: 1}
+  diffuseColorPicker: {r: 0.025697725, g: 0.0141509175, b: 1, a: 1}
   diffuse: 1
   specularColorPicker: {r: 1, g: 1, b: 1, a: 1}
   specular: 1
   emissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
-  emissivityIntensity: 1.49
+  emissivityIntensity: 0
   transmissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
-  opacity: 0
+  opacity: 1
   refractionIndex: 1.1
