@@ -92,9 +92,8 @@ namespace M726Raytracing2 {
             raytracingShader.SetVector(Shader.PropertyToID("_HSSRGB"), hssColor);
             raytracingShader.SetFloat(Shader.PropertyToID("_Exposure"), exposure);
 
-
-
         }
+
         private void OnRenderImage(RenderTexture source, RenderTexture destination) {
             if (!run) return;
 
@@ -110,7 +109,7 @@ namespace M726Raytracing2 {
             }
 
             triangleBuffer = new ComputeBuffer(triangles.Count, sizeof(float) * 3 * 3);
-            materialBuffer = new ComputeBuffer(materials.Count, sizeof(float) * 3);
+            materialBuffer = new ComputeBuffer(materials.Count, sizeof(float) * 4);
 
             //Set buffer Data
             triangleBuffer.SetData(triangles);
@@ -142,7 +141,7 @@ namespace M726Raytracing2 {
             if(lastTexture == null || !cycleWavelength || (currentSample == 1 && run)) lastTexture = new RenderTexture(sourceTexture);
             raytracingShader.SetTexture(0, "Last", lastTexture);
 
-            raytracingShader.Dispatch(0, Mathf.CeilToInt(Screen.width / 8.0f), Mathf.CeilToInt(Screen.height / 8.0f), 1);
+            raytracingShader.Dispatch(0, Mathf.CeilToInt(Screen.width / 16.0f), Mathf.CeilToInt(Screen.height / 16.0f), 1);
 
             if (averageSamples) {
                 Graphics.Blit(lastTexture, destination);
@@ -153,7 +152,8 @@ namespace M726Raytracing2 {
             if (cycleWavelength) {
                 wavelength++;
                 if (wavelength >= wavelengthMax) {
-                    run = false;
+                    //run = false;
+                    lastTexture = null;
                     ResetWavelength(); 
                 }
             }

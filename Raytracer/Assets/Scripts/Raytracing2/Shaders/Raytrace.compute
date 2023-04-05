@@ -21,10 +21,11 @@ struct Material
     float color;
     float roughness;
     float emissive;
+    float n;
 };
 static const Material debugWhite =
 {
-    1.0,1.0,0.0
+    1.0,1.0,0.0,1.2
 };
 
 struct Triangle
@@ -211,7 +212,7 @@ float3 RayTrace(inout uint state, Ray ray)
     float color = 1.0;
     float intensity = 0.0;
     
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 2; i++)
     {
         GetRayIntersection(ray, hit);
         if (hit.distance < 1.#INF)
@@ -226,7 +227,7 @@ float3 RayTrace(inout uint state, Ray ray)
             float3 dirDiffuse = normalize(hit.normal + random3Hemisphere(state, hit.normal));
             float3 dirSpecular = reflect(ray.direction, hit.normal);
             
-            if (SampleProb(state, fresnelReflectanceProb(1.0, 1.5, ray.direction, hit.normal))) //Fresnel
+            if (SampleProb(state, fresnelReflectanceProb(1.0, hit.mat.n, ray.direction, hit.normal))) //Fresnel
             {
                 ray.direction = dirSpecular;
             }
@@ -240,6 +241,7 @@ float3 RayTrace(inout uint state, Ray ray)
             break;
         }
     }
+    return ray.direction;
     return intensity;
 }
 
@@ -254,7 +256,7 @@ Ray CreateCameraRay(double2 uv)
     return CreateRay(origin, direction);
 }
 
-[numthreads(8,8,1)]
+[numthreads(16,16,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     uint width, height;

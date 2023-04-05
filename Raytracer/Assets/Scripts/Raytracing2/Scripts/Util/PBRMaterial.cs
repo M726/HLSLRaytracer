@@ -12,6 +12,7 @@ namespace M726Raytracing2 {
         //[Range(0f, 10f)]
         //public float emissive = 0.0f;
 
+        public float index = 1f;
 
         [SerializeField]
         [Curve(390f, 0f, 440f, 1f, true)]
@@ -35,6 +36,7 @@ namespace M726Raytracing2 {
                 color = diffuseColor.Evaluate(wavelength),
                 roughness = this.roughness,
                 emissive = this.emissive.Evaluate(wavelength),
+                index = this.index,
             };
         }
     }
@@ -42,5 +44,6 @@ namespace M726Raytracing2 {
         public float color;
         public float roughness;
         public float emissive;
+        public float index;
     }
 }
