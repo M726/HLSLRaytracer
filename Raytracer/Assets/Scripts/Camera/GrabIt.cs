@@ -14,7 +14,6 @@ public class GrabObjectProperties{
 [RequireComponent(typeof(LineRenderer))]
 public class GrabIt : MonoBehaviour {
 
-	public int layerMask;
 
 	[Header("Input")]
 	[SerializeField] KeyCode m_rotatePitchPosKey = KeyCode.I;
@@ -119,7 +118,7 @@ public class GrabIt : MonoBehaviour {
 			if(Input.GetMouseButtonDown(0))
 			{
 				RaycastHit hitInfo;
-				if(Physics.Raycast(m_transform.position , m_transform.forward , out hitInfo , m_grabMaxDistance, layerMask))
+				if(Physics.Raycast(m_transform.position , m_transform.forward , out hitInfo , m_grabMaxDistance))
 				{
 					Rigidbody rb = hitInfo.collider.GetComponent<Rigidbody>();
 					if(rb != null){							

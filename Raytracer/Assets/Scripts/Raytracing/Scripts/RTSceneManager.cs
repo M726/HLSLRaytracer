@@ -13,7 +13,6 @@ namespace M726Raytracing {
             objectIdCounter = 1;
             raytracingObjects = UnityEngine.Object.FindObjectsOfType(typeof(RTObject)) as RTObject[];
             foreach (RTObject obj in raytracingObjects) {
-                obj.SetID(objectIdCounter);
                 objectIdCounter++;
             }
         }

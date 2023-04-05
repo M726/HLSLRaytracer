@@ -1,14 +1,6 @@
-// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
-//The Notes Section
-//Albedo - Base Color
-//Specular - Metalness
-//Diffuse - Non-metalic/roughness
-    //Probablility for diffuse ray to have some angle in radians p(x)=(acos(2x-1)-pi/2)
-        //modeled from lambert's cosine law
 
-// Create a RenderTexture with enableRandomWrite flag and set it
-// with cs.SetTexture
+
 RWTexture2D<float4> Result;
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
@@ -16,7 +8,7 @@ float _RandomSeed;
 int _Rays;
 
 static const float PI = 3.14159265f;
-static const float eps = 0.00001f;
+static const float epsilon = 0.00001f;
 
 static const float3 f3one = float3(1.0, 1.0, 1.0);
 static const float3 f3zero = float3(0.0, 0.0, 0.0);
@@ -43,47 +35,11 @@ float3x3 GetRotationMatrix(float3 angles)
     float cb = cos(yaw);
     float cc = cos(roll);
     
-    //float3x3 myaw = float3x3(cb, 0, sb, 
-    //                         0, 1, 0, 
-    //                         -sb, 0, cb);
-    
-    //float3x3 mroll = float3x3(1, 0, 0, 
-    //                          0, cc, -sc, 
-    //                          0, sc, cc);
-    
-    //float3x3 mpitch = float3x3(ca, -sa, 0, 
-    //                           sa, ca, 0,
-    //                            0, 0, 1);
-    
-    //return mul(myaw, mul(mroll, mpitch)); //Works for sure.
-    
     return float3x3(
                     cb*ca + sb*sc*sa, -sa*cb + sb * sc * ca, sb*cc,
                     cc * sa,cc * ca,-sc,
                     -sb * ca + cb * sc * sa, -sb*-sa+ cb * sc * ca,cb * cc
     );
-
-}
-
-float3x3 GetInverseMatrix(float3x3 r)
-{
-    //I'm almost certain this works based on AA^-1=I tests
-    //From linear algebra book 181
-        //A^-1 = 1/(det(A)) * adj(A)
-        //adj(A) = transpose of the matrix of cofactors
-    float m11 = r._22 * r._33 - r._23 * r._32;
-    float m12 = -r._12 * r._33 + r._13 * r._32;
-    float m13 = r._12 * r._23 - r._13 * r._22;
-    
-    float m21 = -r._21 * r._33 + r._23 * r._31;
-    float m22 = r._11 * r._33 - r._13 * r._31;
-    float m23 = -r._11 * r._23 + r._13 * r._21;
-    
-    float m31 = r._21 * r._33 - r._22 * r._31;
-    float m32 = -r._11 * r._32 + r._12 * r._31;
-    float m33 = r._11 * r._22 - r._12 * r._21;
-    
-    return (1 / determinant(r)) * float3x3(m11, m12, m13, m21, m22, m23, m31, m32, m33);
 
 }
 
@@ -219,7 +175,6 @@ bool randBool(float3 s, float p)
 
 void IntersectionTestPlane(ShaderObject object, Ray ray, inout RayHit bestHit)
 {
-    //float3 normal = float3(0, 1, 0);
     float3x3 rotationMatrix = GetRotationMatrix(object.rotation);
     float3 normal = mul(rotationMatrix, float3(0, 1, 0)); //TODO: precompute this - it should take far fewer calculations
     
@@ -303,9 +258,6 @@ RayHit Trace(Ray ray)
                 //IntersectionTestCube(_Objects[i], ray, bestHit);
                 break;
         }
-        //if (ray.n == 1 || ray.n == _Objects[i].material.refraction)
-        //{
-        //}
     }
     return bestHit;
 }
@@ -337,7 +289,6 @@ float3 RayTrace(Ray ray)
     RayHit hit = CreateRayHit();
     float3 result = f3zero;
     float3 colorMultiplier = f3one;
-    //ray.n = 1.5;
     
     for (int i = 0; i < _Rays; i++)
     {
@@ -349,7 +300,7 @@ float3 RayTrace(Ray ray)
         {
             //Calculate probability of reflection
             float reflectance = ReflectionCoefficient(ray.n, hit.mat.refraction, ray.direction, hit.normal);
-            ray.origin = hit.position + hit.normal * eps;
+            ray.origin = hit.position + hit.normal * epsilon;
             
             //Sample reflectance probability
             if (randBool(ray.direction, reflectance))
@@ -370,21 +321,6 @@ float3 RayTrace(Ray ray)
                 //return ray.direction;
                 colorMultiplier *= hit.mat.diffuseColor * hit.mat.diffuse * (1 - reflectance);
                     
-            }
-            else
-            {
-                ray.origin = hit.position - 2 * hit.normal * eps;
-                //Refract
-                if (hit.mat.refraction == ray.n) //Leaving
-                {
-                    //ray.direction = refract(ray.direction, hit.normal, 1);
-                    //ray.n = 1;
-                }
-                else //Entering
-                {
-                    ray.n = hit.mat.refraction;
-                    ray.direction = refract(ray.direction, hit.normal, ray.n);
-                }
             }
         }
         else break;

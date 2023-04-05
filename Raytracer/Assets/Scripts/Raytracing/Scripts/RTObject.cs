@@ -7,8 +7,7 @@ using UnityEngine;
 namespace M726Raytracing {
     [ExecuteInEditMode]
     public class RTObject : MonoBehaviour {
-
-        private int id;
+        
         public ObjectType type;
         private Vector3 position;
         private Vector3 localScale;
@@ -63,10 +62,6 @@ namespace M726Raytracing {
                     break;
                 }
             }
-        }
-
-        public void SetID(int id) {
-            this.id = id;
         }
     }
 }

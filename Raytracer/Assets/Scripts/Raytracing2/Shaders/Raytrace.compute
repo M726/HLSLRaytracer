@@ -1,0 +1,273 @@
+#pragma kernel CSMain
+
+RWTexture2D<float4> Result;
+RWTexture2D<float4> Last;
+
+float4x4 _CameraToWorld;
+float4x4 _CameraInverseProjection;
+float _Wavelength;
+float _RandX;
+float _RandY;
+float3 _HSSRGB;
+float _Exposure;
+
+const static float EPSILON = 0.01;
+const static float INFINITY = 1.#INF;
+const static float PI = 3.1415927;
+
+
+struct Material
+{
+    float color;
+    float roughness;
+    float emissive;
+};
+static const Material debugWhite =
+{
+    1.0,1.0,0.0
+};
+
+struct Triangle
+{
+    float3 v1;
+    float3 v2;
+    float3 v3;
+};
+struct Ray
+{
+    float3 origin;
+    float3 direction;
+    float currentIndex;
+};
+struct RayHit
+{
+    float3 normal;
+    Material mat;
+    float distance;
+};
+
+StructuredBuffer<Triangle> TriangleBuffer;
+StructuredBuffer<Material> MaterialBuffer;
+
+Ray
+    CreateRay(
+    float3 origin, float3 direction)
+{
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    ray.currentIndex = 1.0f;
+    return ray;
+}
+
+RayHit CreateRayHit()
+{
+    RayHit rayHit;
+    rayHit.distance = INFINITY;
+    rayHit.mat = debugWhite;
+    rayHit.normal = float3(0, 0, 0);
+    return rayHit;
+}
+
+float3 TriangleNormal(float3 A, float3 B, float3 C)
+{
+    return normalize(cross(B - A, C - A));
+}
+
+bool RayTriangleIntersection(Ray ray, float3 A, float3 B, float3 C, inout float distance)
+{
+    
+    float3 edge1 = B - A;
+    float3 edge2 = C - A;
+    
+    
+    
+    
+    //Ray Sphere Test
+    float l1 = length(edge1);
+    float l2 = length(edge2);
+    float radius = l1 > l2 ? l1 : l2;
+    
+    float3 s = ray.origin - A;
+    float Sb = dot(s, ray.direction);
+    float Sc = dot(s, s) - radius * radius;
+    if (Sc > Sb * Sb)
+        return false; // no intersection
+    
+    float3 h, q;
+    float a, f, u, v;
+    
+    h = cross(ray.direction, edge2);
+    a = dot(edge1, h);
+    
+    if (a <= 0) //<= 0 for backface culling, == for none
+        return false;
+    
+    f = 1.0 / a;
+    u = f * dot(s, h);
+    
+    if (u < 0 || u > 1)
+        return false;
+    
+    q = cross(s, edge1);
+    v = f * dot(ray.direction, q);
+    
+    if (v < 0 || u + v > 1)
+        return false;
+    
+    float t = f * dot(edge2, q);
+    
+    if (t > 0)
+    {
+        distance = t;
+        return true;
+    } 
+
+    return false;
+}
+
+
+void GetRayIntersection(Ray ray, inout RayHit rayHit)
+{
+    
+    uint triangles, trianglesStride;
+    
+    TriangleBuffer.GetDimensions(triangles, trianglesStride);
+    
+    float dist = INFINITY;
+    Triangle triVerts;
+    
+    for (uint i = 0; i < triangles; i++)
+    {
+        float t;
+        triVerts = TriangleBuffer[i];
+        if (RayTriangleIntersection(ray, triVerts.v1, triVerts.v2, triVerts.v3, t))
+        {
+            if (t < dist)
+            {
+                rayHit.normal = TriangleNormal(triVerts.v1, triVerts.v2, triVerts.v3);
+                rayHit.distance = t;
+                rayHit.mat = MaterialBuffer[i];
+                dist = t;
+            }
+        }
+    }
+}
+
+float random(inout uint state)
+{
+    state = state * 747796405 + 2891336453;
+    uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+    result = (result >> 22) ^ result;
+    return result / 4294967295.0;
+}
+float3 NormalDist(inout uint state)
+{
+    float theta = 2 * PI * random(state);
+    float rho = sqrt(-2 * log(random(state)));
+    return rho * cos(theta);
+}
+float3 random3(inout uint state)
+{
+    float x = NormalDist(state);
+    float y = NormalDist(state);
+    float z = NormalDist(state);
+    return normalize(float3(x, y, z));
+}
+float3 random3Hemisphere(inout uint state, float3 direction)
+{
+    float3 r = random3(state);
+    if (dot(direction, r) <= 0)
+    {
+        return -r;
+    }
+    return r;
+}
+uint uintFromFloat3(float3 s)
+{
+    return asuint(((s.x + 1.0) + 4.0) + ((s.y + 1.0) + 2.0) + (s.z + 1.0));
+}
+float fresnelReflectanceProb(float n1, float n2, float3 direction, float3 normal)
+{
+    //dot(a,b) = |a||b|cos(theta)
+    float theta = acos(dot(-direction, normal));
+    float sinTheta2 = (n1 / n2) * sin(theta); //correct
+    float cosTheta2 = sqrt(1 - sinTheta2 * sinTheta2); //correct
+    
+    float a = (n1 * cos(theta) - n2 * cosTheta2) / (n1 * cos(theta) + n2 * cosTheta2);
+    float b = (n1 * cosTheta2 - n2 * cos(theta)) / (n1 * cosTheta2 + n2 * cos(theta));
+    
+    return 0.5*(a*a+b*b);
+}
+bool SampleProb(inout uint state, float probability)
+{
+    return (random(state) <= probability);
+}
+
+float3 RayTrace(inout uint state, Ray ray)
+{
+    RayHit hit = CreateRayHit();
+    
+    float color = 1.0;
+    float intensity = 0.0;
+    
+    for (int i = 0; i < 5; i++)
+    {
+        GetRayIntersection(ray, hit);
+        if (hit.distance < 1.#INF)
+        {
+            
+            intensity += hit.mat.emissive * color;
+            color *= hit.mat.color;
+            
+            ray.origin = ray.origin + ray.direction * hit.distance;
+            state += uintFromFloat3(ray.direction);
+            
+            float3 dirDiffuse = normalize(hit.normal + random3Hemisphere(state, hit.normal));
+            float3 dirSpecular = reflect(ray.direction, hit.normal);
+            
+            if (SampleProb(state, fresnelReflectanceProb(1.0, 1.5, ray.direction, hit.normal))) //Fresnel
+            {
+                ray.direction = dirSpecular;
+            }
+            else
+            {
+                ray.direction = dirDiffuse;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+    return intensity;
+}
+
+Ray CreateCameraRay(double2 uv)
+{
+    double3 origin = mul(_CameraToWorld, float4(float3(0,0,0), 1.0f)).xyz;
+    double3 direction = mul(_CameraInverseProjection, float4(uv, 0.0f, 1.0f)).xyz;
+    
+    direction = mul(_CameraToWorld, float4(direction, 0.0f)).xyz;
+    direction = (direction / length(direction));
+    
+    return CreateRay(origin, direction);
+}
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint width, height;
+    Result.GetDimensions(width, height);
+    
+    double2 uv = double2(((id.xy) + double2(_RandX, _RandY)) / double2(width, height) * 2.0 - 1.0);
+    
+    Ray ray = CreateCameraRay(uv);
+    
+    float seed = id.x * width + id.y + asuint(_RandX);
+    float3 result = RayTrace(seed,ray); 
+    result = float3(result.x * _HSSRGB.x, result.y * _HSSRGB.y, result.z * _HSSRGB.z);
+    
+    Result[id.xy] = float4(_Exposure * result, 1);
+    Last[id.xy] += Result[id.xy];
+}

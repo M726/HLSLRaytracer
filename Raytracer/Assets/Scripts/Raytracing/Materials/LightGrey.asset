@@ -20,4 +20,4 @@ MonoBehaviour:
   emissivityIntensity: 0
   transmissiveColorPicker: {r: 1, g: 1, b: 1, a: 1}
   opacity: 1
-  refractionIndex: 1.17
+  refractionIndex: 1.18
