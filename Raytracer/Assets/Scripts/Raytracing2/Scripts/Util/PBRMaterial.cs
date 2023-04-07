@@ -13,37 +13,36 @@ namespace M726Raytracing2 {
         //public float emissive = 0.0f;
 
         public float index = 1f;
-
-        [SerializeField]
-        [Curve(390f, 0f, 440f, 1f, true)]
-        public AnimationCurve diffuseColor = new AnimationCurve(new[] { new Keyframe(390, 0.25f), new Keyframe(830, 0.25f) });
-
-        [Range(0f, 1f)]
         public float roughness = 1f;
 
-        [SerializeField]
-        [Curve(390f, 0f, 440f, 100f, true)]
-        public AnimationCurve emissive = new AnimationCurve(new[] { new Keyframe(390, 0f), new Keyframe(830, 0f) });
+        public Color colorDiffuse = Color.white;
+        public Color colorSpecular = Color.white;
+        public Color colorEmissive = Color.black;
+        public float emissiveIntensity = 0f;
 
-        //[SerializeField]
-        //[Curve(390f, 0f, 440f, 1f, true)]
-        //public AnimationCurve specularColor = new AnimationCurve(new[] { new Keyframe(390, 0f), new Keyframe(830, 0) });
-
+        public UnityEngine.Vector3 ColorToVector3(Color c) {
+            return new UnityEngine.Vector3((float)c.r, (float)c.g, (float)c.b);
+        }
+        
 
 
         public MaterialStruct GetMaterialProperties(float wavelength) {
             return new MaterialStruct() {
-                color = diffuseColor.Evaluate(wavelength),
-                roughness = this.roughness,
-                emissive = this.emissive.Evaluate(wavelength),
                 index = this.index,
+                roughness = this.roughness,
+                colorDiffuse = ColorToVector3(this.colorDiffuse),
+                colorSpecular = ColorToVector3(this.colorSpecular),
+                colorEmissive = ColorToVector3(this.colorEmissive),
+                emissiveIntensity = this.emissiveIntensity,
             };
         }
     }
     public struct MaterialStruct {
-        public float color;
-        public float roughness;
-        public float emissive;
         public float index;
+        public float roughness;
+        public UnityEngine.Vector3 colorDiffuse;
+        public UnityEngine.Vector3 colorSpecular;
+        public UnityEngine.Vector3 colorEmissive;
+        public float emissiveIntensity;
     }
 }

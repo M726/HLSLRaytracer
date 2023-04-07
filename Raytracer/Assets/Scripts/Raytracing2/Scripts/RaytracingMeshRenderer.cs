@@ -48,6 +48,7 @@ namespace M726Raytracing2 {
             Gizmos.color = Color.white;
             if(showMesh)
             Gizmos.DrawMesh(mesh);
+            
         }
     }
 }

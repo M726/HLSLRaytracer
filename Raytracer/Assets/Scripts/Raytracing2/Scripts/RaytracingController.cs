@@ -10,12 +10,17 @@ namespace M726Raytracing2 {
 
         [Header("Raytracing Settings")]
         public bool run = true;
+        public bool debug = false;
         public bool averageSamples = true;
         public uint currentSample = 0;
 
         public ComputeShader raytracingShader;
         public RenderTexture sourceTexture;
         private RenderTexture lastTexture;
+        private Material addMaterial;
+
+        List<Triangle> triangles;
+        List<MaterialStruct> materials;
 
         [Header("Camera Settings")]
         public float exposure = 1f;
@@ -37,6 +42,7 @@ namespace M726Raytracing2 {
 
         ComputeBuffer triangleBuffer;
         ComputeBuffer materialBuffer;
+        private bool bufferSet = false;
 
         private readonly System.Random rand = new System.Random();
 
@@ -100,16 +106,31 @@ namespace M726Raytracing2 {
             CreateSourceTexture();
             SetRenderProperties();
 
+            if (averageSamples) {
+                if (!bufferSet) {
+                    SetBuffers();
+                }
+                Render(destination);
+            } else {
+                SetBuffers();
+                Render(destination);
+                ReleaseBuffers();
+            }
+            
 
-            List<Triangle> triangles = new List<Triangle>();
-            List<MaterialStruct> materials = new List<MaterialStruct>();
+        }
+
+        private void SetBuffers() {
+            triangles = new List<Triangle>();
+            materials = new List<MaterialStruct>();
+            
             foreach (Mesh mesh in meshes) {
                 triangles.AddRange(mesh.GetTriangles());
                 materials.AddRange(Enumerable.Repeat(mesh.GetMaterial(wavelength), mesh.tris));
             }
 
             triangleBuffer = new ComputeBuffer(triangles.Count, sizeof(float) * 3 * 3);
-            materialBuffer = new ComputeBuffer(materials.Count, sizeof(float) * 4);
+            materialBuffer = new ComputeBuffer(materials.Count, sizeof(float) * 12);
 
             //Set buffer Data
             triangleBuffer.SetData(triangles);
@@ -118,17 +139,20 @@ namespace M726Raytracing2 {
             raytracingShader.SetBuffer(0, Shader.PropertyToID("TriangleBuffer"), triangleBuffer);
             raytracingShader.SetBuffer(0, Shader.PropertyToID("MaterialBuffer"), materialBuffer);
 
-            Render(destination);
+            bufferSet = true;
+        }
 
+        private void ReleaseBuffers() {
             triangleBuffer.Release();
             materialBuffer.Release();
+            bufferSet = false;
         }
 
         private void CreateSourceTexture() {
             if (sourceTexture == null || sourceTexture.width != Screen.width || sourceTexture.height != Screen.height) {
                 if (sourceTexture != null) sourceTexture.Release();
 
-                sourceTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.sRGB);
+                sourceTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
                 sourceTexture.enableRandomWrite = true;
                 sourceTexture.Create();
             }
@@ -138,16 +162,17 @@ namespace M726Raytracing2 {
         private void Render(RenderTexture destination) {
             raytracingShader.SetTexture(0, "Result", sourceTexture);
 
-            if(lastTexture == null || !cycleWavelength || (currentSample == 1 && run)) lastTexture = new RenderTexture(sourceTexture);
-            raytracingShader.SetTexture(0, "Last", lastTexture);
+            
+            raytracingShader.Dispatch(0, Mathf.CeilToInt(Screen.width / 8.0f), Mathf.CeilToInt(Screen.height / 8.0f), 1);
 
-            raytracingShader.Dispatch(0, Mathf.CeilToInt(Screen.width / 16.0f), Mathf.CeilToInt(Screen.height / 16.0f), 1);
 
-            if (averageSamples) {
-                Graphics.Blit(lastTexture, destination);
-            } else {
-                Graphics.Blit(sourceTexture, destination);
+            if (addMaterial == null) {
+                addMaterial = new Material(Shader.Find("Hidden/AverageFrames"));
             }
+            addMaterial.SetFloat("_Sample", currentSample);
+
+            Graphics.Blit(sourceTexture, lastTexture, addMaterial);
+            Graphics.Blit(lastTexture, destination);
 
             if (cycleWavelength) {
                 wavelength++;

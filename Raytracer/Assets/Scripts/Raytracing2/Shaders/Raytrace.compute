@@ -18,14 +18,22 @@ const static float PI = 3.1415927;
 
 struct Material
 {
-    float color;
+    float index;
     float roughness;
-    float emissive;
-    float n;
+    float3 colorDiffuse;
+    float3 colorSpecular;
+    float3 colorEmissive;
+    float emissiveIntensity;
+    float transparency;
 };
 static const Material debugWhite =
 {
-    1.0,1.0,0.0,1.2
+    1.2, 
+    1.0,
+    float3(0.7, 0.7, 0.7),
+    float3(0.3, 0.3, 0.3),
+    float3(0.0, 0.0, 0.0),
+    0.0,
 };
 
 struct Triangle
@@ -64,9 +72,9 @@ Ray
 RayHit CreateRayHit()
 {
     RayHit rayHit;
-    rayHit.distance = INFINITY;
+    rayHit.distance = 1.#INF;
     rayHit.mat = debugWhite;
-    rayHit.normal = float3(0, 0, 0);
+    rayHit.normal = float3(0, 0, 1);
     return rayHit;
 }
 
@@ -128,10 +136,11 @@ bool RayTriangleIntersection(Ray ray, float3 A, float3 B, float3 C, inout float 
 }
 
 
-void GetRayIntersection(Ray ray, inout RayHit rayHit)
+bool GetRayIntersection(Ray ray, inout RayHit rayHit)
 {
     
     uint triangles, trianglesStride;
+    bool hit = false;
     
     TriangleBuffer.GetDimensions(triangles, trianglesStride);
     
@@ -144,6 +153,7 @@ void GetRayIntersection(Ray ray, inout RayHit rayHit)
         triVerts = TriangleBuffer[i];
         if (RayTriangleIntersection(ray, triVerts.v1, triVerts.v2, triVerts.v3, t))
         {
+            hit = true;
             if (t < dist)
             {
                 rayHit.normal = TriangleNormal(triVerts.v1, triVerts.v2, triVerts.v3);
@@ -153,6 +163,7 @@ void GetRayIntersection(Ray ray, inout RayHit rayHit)
             }
         }
     }
+    return hit;
 }
 
 float random(inout uint state)
@@ -207,41 +218,50 @@ bool SampleProb(inout uint state, float probability)
 
 float3 RayTrace(inout uint state, Ray ray)
 {
-    RayHit hit = CreateRayHit();
+    RayHit hit;
+    float3 color = float3(1.0, 1.0, 1.0);
+    float3 intensity = float3(1.0, 1.0, 1.0)*0.0;
     
-    float color = 1.0;
-    float intensity = 0.0;
-    
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < bounceLimit; i++)
     {
-        GetRayIntersection(ray, hit);
-        if (hit.distance < 1.#INF)
+        hit = CreateRayHit();
+        if (GetRayIntersection(ray, hit))
         {
-            
-            intensity += hit.mat.emissive * color;
-            color *= hit.mat.color;
-            
-            ray.origin = ray.origin + ray.direction * hit.distance;
             state += uintFromFloat3(ray.direction);
             
             float3 dirDiffuse = normalize(hit.normal + random3Hemisphere(state, hit.normal));
             float3 dirSpecular = reflect(ray.direction, hit.normal);
+            float3 dirRefract = refract(ray.direction, hit.normal, hit.mat.index);
             
-            if (SampleProb(state, fresnelReflectanceProb(1.0, hit.mat.n, ray.direction, hit.normal))) //Fresnel
+            intensity += (hit.mat.emissiveIntensity * hit.mat.colorEmissive) * color;
+            
+            
+            
+            ray.origin = ray.origin + ray.direction * hit.distance;
+            
+            if (SampleProb(state, fresnelReflectanceProb(1.0, hit.mat.index, ray.direction, hit.normal))) //Fresnel
             {
                 ray.direction = dirSpecular;
+                color *= hit.mat.colorSpecular;
+            }
+            else if (SampleProb(state, hit.mat.transparency))
+            {
+                ray.direction = dirRefract;
             }
             else
             {
                 ray.direction = dirDiffuse;
+                color *= hit.mat.colorDiffuse;
             }
+            
         }
         else
         {
             break;
         }
+        if (length(color) < 0.1) break;
+
     }
-    return ray.direction;
     return intensity;
 }
 
@@ -256,7 +276,7 @@ Ray CreateCameraRay(double2 uv)
     return CreateRay(origin, direction);
 }
 
-[numthreads(16,16,1)]
+[numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     uint width, height;
@@ -268,8 +288,6 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     
     float seed = id.x * width + id.y + asuint(_RandX);
     float3 result = RayTrace(seed,ray); 
-    result = float3(result.x * _HSSRGB.x, result.y * _HSSRGB.y, result.z * _HSSRGB.z);
     
     Result[id.xy] = float4(_Exposure * result, 1);
-    Last[id.xy] += Result[id.xy];
 }
